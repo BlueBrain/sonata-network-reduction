@@ -1,0 +1,85 @@
+{
+  "network": "./circuit_config.json",
+  "simulation": "./simulation_config.json",
+  "config_path": "/home/sanin/workspace/sonata/examples/9_cells/config.json",
+  "config_dir": "/home/sanin/workspace/sonata/examples/9_cells",
+  "components": {
+    "morphologies_dir": "../shared_components/morphologies",
+    "synaptic_models_dir": "../shared_components/synaptic_models",
+    "mechanisms_dir": "../shared_components/mechanisms",
+    "biophysical_neuron_models_dir": "../shared_components/biophysical_neuron_templates"
+  },
+  "networks": {
+    "nodes": [
+      {
+        "nodes_file": "./network/cortex_nodes.h5",
+        "node_types_file": "./network/cortex_node_types.csv"
+      },
+      {
+        "nodes_file": "./network/excvirt_nodes.h5",
+        "node_types_file": "./network/excvirt_node_types.csv"
+      },
+      {
+        "nodes_file": "./network/inhvirt_nodes.h5",
+        "node_types_file": "./network/inhvirt_node_types.csv"
+      }
+    ],
+    "edges": [
+      {
+        "edges_file": "./network/excvirt_cortex_edges.h5",
+        "edge_types_file": "./network/excvirt_cortex_edge_types.csv"
+      },
+      {
+        "edges_file": "./network/inhvirt_cortex_edges.h5",
+        "edge_types_file": "./network/inhvirt_cortex_edge_types.csv"
+      }
+    ]
+  },
+  "run": {
+    "tstop": 3000.0,
+    "dt": 0.1,
+    "dL": 20.0,
+    "spike_threshold": -15,
+    "nsteps_block": 5000
+  },
+  "target_simulator": "NEURON",
+  "conditions": {
+    "celsius": 34.0,
+    "v_init": -80
+  },
+  "node_sets_file": "./node_sets.json",
+  "inputs": {
+    "exc_spikes": {
+      "input_type": "spikes",
+      "module": "h5",
+      "input_file": "./inputs/exc_spike_trains.h5",
+      "node_set": "excvirt"
+    },
+    "inh_spikes": {
+      "input_type": "spikes",
+      "module": "h5",
+      "input_file": "./inputs/inh_spike_trains.h5",
+      "node_set": "inhvirt"
+    }
+  },
+  "output": {
+    "log_file": "log.txt",
+    "output_dir": "./output",
+    "spikes_file": "spikes.h5",
+    "spikes_sort_order": "time"
+  },
+  "reports": {
+    "membrane_potential": {
+      "cells": "biophys_cells",
+      "variable_name": "v",
+      "module": "membrane_report",
+      "sections": "soma"
+    },
+    "calcium_concentration": {
+      "cells": "biophys_cells",
+      "variable_name": "cai",
+      "module": "membrane_report",
+      "sections": "soma"
+    }
+  }
+}
