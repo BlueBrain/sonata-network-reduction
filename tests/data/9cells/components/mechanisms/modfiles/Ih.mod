@@ -3,7 +3,7 @@
 NEURON	{
 	SUFFIX Ih
 	NONSPECIFIC_CURRENT ihcn
-	RANGE gbar, g, ihcn 
+	RANGE gbar, g, ihcn, ehcn
 }
 
 UNITS	{
