@@ -68,7 +68,7 @@ class Seclist:
     def _put_param(self, param_name, param_value, mech_name, loc):
         full_param_name = self._full_param_name(param_name, mech_name)
         self._params[full_param_name] = NrnSectionParameter(
-                param_name, param_value, locations=[loc], frozen=True, param_name=full_param_name)
+            param_name, param_value, locations=[loc], frozen=True, param_name=full_param_name)
 
     def create(self, seclist_name, sec):
         loc = NrnSeclistLocation(seclist_name, seclist_name)
@@ -92,19 +92,19 @@ class Seclist:
             for mech in seg:
                 if not mech.is_ion():
                     if mech.name() not in self._mechanisms:
-                        print('Warning! Unidentified mech {} in sec {}'.format(mech.name(),
-                                sec.name()))
+                        print('Warning! Unidentified mech {} in sec {}'.format(
+                            mech.name(), sec.name()))
                     mech_params = get_mech_params(mech.name())
                     for param_name in mech_params:
                         if not self._has_param(param_name, mech.name()):
-                            print('Warning! Unidentified param {} in sec {}'.format(param_name,
-                                    sec.name()))
+                            print('Warning! Unidentified param {} in sec {}'.format(
+                                param_name, sec.name()))
                         else:
                             param = self._get_param(param_name, mech.name())
                             param_value = getattr(mech, param_name, None)
                             if not np.isclose(param_value, param.value):
                                 print('Warning! Unequal param {} value {} in sec {}'.format(
-                                        param_name, (param_value, param.value), sec.name()))
+                                    param_name, (param_value, param.value), sec.name()))
 
 
 class SeclistCache:
@@ -145,15 +145,11 @@ def extract(sections):
 def get_mech_params(mech_name):
     """extracts params from mechanism's PARAMETER block
 
-    This func comes from https://www.neuron.yale.edu/phpBB/viewtopic.php?f=2&t=4145.
-    This func can be replaced by https://github.com/BlueBrain/nmodl but its usage
-    won't reduce codebase that much as one can expect.
-
     Args:
         mech_name (str): mechanism name like `hh`
 
     Returns:
-        dict: params<name, dict>
+        dict: params<name, value>
     """
     mech_type = h.MechanismType(0)
     mech_type.select(mech_name)

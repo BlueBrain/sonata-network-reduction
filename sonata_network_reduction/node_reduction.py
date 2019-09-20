@@ -1,7 +1,5 @@
 import os
-from abc import ABCMeta, abstractmethod
 
-import h5py
 import neuron
 import neuron_reduce
 from aibs_circuit_converter import convert_to_hoc
@@ -9,33 +7,23 @@ from bluepyopt.ephys import create_hoc
 from bluepyopt.ephys.models import CellModel, HocCellModel
 from bluepyopt.ephys.morphologies import NrnFileMorphology
 from hoc2swc import neuron2swc
-from neuron import h
 
 from biophysics import extract
 from sonata_network_reduction import utils
-from sonata_network_reduction.node_population import NodePopulation
-from sonata_network_reduction.nrn_synapse import NrnIncomingSynapses
+from sonata_network_reduction.node_population_reduction import NodePopulationReduction
+from sonata_network_reduction.edge_reduction import IncomingEdgesReduction
 
 
-class NrnCell(metaclass=ABCMeta):
+class BiophysNodeReduction:
 
-    def __init__(self, node_id, population: NodePopulation):
+    def __init__(self, node_id, population_reduction: NodePopulationReduction):
         self.node_id = node_id
-        self.population = population
-        self.node = self.population.get_node(self.node_id)
-        self.nrn = None
-
-    @abstractmethod
-    def instantiate(self):
-        pass
-
-
-class BiophysCell(NrnCell):
-
-    def __init__(self, node_id, population: NodePopulation):
-        super().__init__(node_id, population)
+        self.population_reduction = population_reduction
+        self.node = self.population_reduction.get_node(self.node_id)
+        self.edges_reduction = IncomingEdgesReduction(
+            self, population_reduction.get_incoming_edges(node_id))
         self._ephys_model = None
-        self.incoming_synapses = NrnIncomingSynapses(self, population.get_incoming_edges(node_id))
+        self._is_reduced = False
 
     @property
     def morphology_filename(self):
@@ -44,7 +32,7 @@ class BiophysCell(NrnCell):
     @property
     def morphology_filepath(self):
         return os.path.join(
-            self.population.get_circuit_component('morphologies_dir'),
+            self.population_reduction.get_circuit_component('morphologies_dir'),
             self.morphology_filename
         )
 
@@ -54,7 +42,7 @@ class BiophysCell(NrnCell):
 
     @property
     def biophys_filepath(self):
-        biophys_dir_path = self.population.get_circuit_component(
+        biophys_dir_path = self.population_reduction.get_circuit_component(
             'biophysical_neuron_models_dir')
         if ':' in self.node['model_template']:
             # this ':' is an artifact from official Sonata example networks
@@ -74,11 +62,18 @@ class BiophysCell(NrnCell):
     def get_section_list(self):
         return self.nrn.soma[0].wholetree()
 
-    def instantiate(self):
-        self._instantiate_nrn_cell()
-        self.incoming_synapses.instantiate()
+    @property
+    def nrn(self):
+        model = self._ephys_model
+        if not model:
+            return None
+        return model.icell
 
-    def _instantiate_nrn_cell(self):
+    def _instantiate(self):
+        self._instantiate_node()
+        self.edges_reduction.instantiate()
+
+    def _instantiate_node(self):
         biophys_filename = self.biophys_filename.lower()
         if biophys_filename.endswith('.nml'):
             biophysics = convert_to_hoc.load_neuroml(self.biophys_filepath)
@@ -101,20 +96,25 @@ class BiophysCell(NrnCell):
         else:
             raise ValueError('Unsupported biophysics file {}'.format(self.biophys_filepath))
         self._ephys_model.instantiate(neuron)
-        self.nrn = self._ephys_model.icell
 
     def reduce(self, *args, **kwargs):
-        self.nrn, reduced_synapse_list, reduced_netcon_list = neuron_reduce.subtree_reductor(
-            self.nrn,
-            self.incoming_synapses.synapses,
-            self.incoming_synapses.netcons,
-            *args,
-            *kwargs, )
+        if self._is_reduced:
+            raise RuntimeError('Reduction can be done only once and it is irreversible')
+        if not self.nrn:
+            self._instantiate()
+        self._ephys_model.icell, reduced_synapse_list, reduced_netcon_list = \
+            neuron_reduce.subtree_reductor(
+                self.nrn,
+                self.edges_reduction.synapses,
+                self.edges_reduction.netcons,
+                *args,
+                *kwargs, )
 
         # reduced model always saved in .hoc
         if '.nml' in self.node['model_template']:
             self.node.at['model_template'] = self.node['model_template'].replace('.nml', '.hoc')
-        self.incoming_synapses.reduce(reduced_synapse_list, reduced_netcon_list)
+        self.edges_reduction.reduce(reduced_synapse_list, reduced_netcon_list)
+        self._is_reduced = True
 
     def write_node(self, output_dirpath):
         filepath = os.path.join(output_dirpath, str(self.node_id) + '.json')
@@ -141,28 +141,3 @@ class BiophysCell(NrnCell):
 
         with open(filepath, 'w') as f:
             f.write(biophysics)
-
-
-class VirtualCell(NrnCell):
-
-    def _get_input_filepath(self):
-        simulation_input = self.population.get_simulation_input()
-        if simulation_input is None:
-            raise ValueError('No input for population {}'.format(self.population.name))
-        return simulation_input['input_file']
-
-    def instantiate(self):
-        input_filepath = self._get_input_filepath()
-        with h5py.File(input_filepath, 'r') as f:
-            gids = f['/spikes/gids']
-            timestamps = f['/spikes/timestamps']
-            time_units = timestamps.attrs['units']
-            if time_units and time_units != 'ms':
-                raise ValueError(
-                    'Invalid time units for virtual cells in {}'.format(input_filepath))
-            idx = gids[:] == self.node_id
-            self._timestamp_list = timestamps[idx]
-
-        time_vector = h.Vector(self._timestamp_list)
-        self.nrn = h.VecStim()
-        self.nrn.play(time_vector)

@@ -7,9 +7,9 @@ AFFERENT_SEC_POS = 'afferent_section_pos'
 AFFERENT_SEC_ID = 'afferent_section_id'
 
 
-class NrnIncomingSynapses:
-    def __init__(self, target_cell, edges):
-        self._target_cell = target_cell
+class IncomingEdgesReduction:
+    def __init__(self, target_node, edges):
+        self._target_node = target_node
 
         self.synapses = []
         self.netcons = []
@@ -25,7 +25,7 @@ class NrnIncomingSynapses:
             delay = getattr(edge, 'delay')
 
             synapse_class = getattr(h, synapse_classname)
-            section = self._target_cell.get_section_list()[section_id]
+            section = self._target_node.get_section_list()[section_id]
             synapse = synapse_class(section(section_x))
             edge_dynamics = edge.loc[edge.index.str.startswith(DYNAMICS_PREFIX)]
             for k, v in edge_dynamics.items():
@@ -42,7 +42,7 @@ class NrnIncomingSynapses:
             postseg = reduced_netcon.postseg()
             pos = postseg.x
             sec = postseg.sec
-            sec_id = self._target_cell.get_section_list().index(sec)
+            sec_id = self._target_node.get_section_list().index(sec)
             netcon = self.netcons[reduced_netcon_idx]
             if netcon != reduced_netcon:
                 raise RuntimeError('Reduce Algorithm changed. Please revise `reduce` method.')

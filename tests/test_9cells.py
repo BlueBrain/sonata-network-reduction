@@ -5,9 +5,9 @@ import numpy as np
 from neuron import h
 
 import helpers.utils as utils
-from node_population import NodePopulation
+from node_population_reduction import NodePopulationReduction
 from sonata_network_reduction.sonata_api import SonataApi
-from sonata_network_reduction.nrn_cell import BiophysCell
+from sonata_network_reduction.node_reduction import BiophysNodeReduction
 
 
 class Test9CellsClass:
@@ -33,34 +33,34 @@ class Test9CellsClass:
         shutil.rmtree(cls._compiled_mod_dirpath)
 
     def _create_biophys_cell(self, population_name, node_id):
-        node_population = NodePopulation(
+        population_reduction = NodePopulationReduction(
                 self.sonata_api.circuit.nodes[population_name], self.sonata_api)
-        return BiophysCell(node_id, node_population)
+        return BiophysNodeReduction(node_id, population_reduction)
 
     def test_instantiate_cortex_gid_0(self):
         biophys_cell = self._create_biophys_cell('cortex', 0)
-        biophys_cell.instantiate()
+        biophys_cell._instantiate()
         assert hasattr(h, biophys_cell.template_name)
         assert len(biophys_cell.get_section_list()) == 123
-        assert len(biophys_cell.incoming_synapses) == 143
+        assert len(biophys_cell.edges_reduction) == 143
 
     def test_instantiate_cortex_gid_4(self):
         biophys_cell = self._create_biophys_cell('cortex', 4)
-        biophys_cell.instantiate()
+        biophys_cell._instantiate()
         assert hasattr(h, biophys_cell.template_name)
         assert len(biophys_cell.get_section_list()) == 64
-        assert len(biophys_cell.incoming_synapses) == 144
+        assert len(biophys_cell.edges_reduction) == 144
 
     def test_instantiate_cortex_gid_7(self):
         biophys_cell = self._create_biophys_cell('cortex', 7)
-        biophys_cell.instantiate()
+        biophys_cell._instantiate()
         assert hasattr(h, biophys_cell.template_name)
         assert len(biophys_cell.get_section_list()) == 38
-        assert len(biophys_cell.incoming_synapses) == 139
+        assert len(biophys_cell.edges_reduction) == 139
 
     def test_reduce_cortex_gid_0(self):
         biophys_cell = self._create_biophys_cell('cortex', 0)
-        biophys_cell.instantiate()
+        biophys_cell._instantiate()
         original_sections_len = len(biophys_cell.get_section_list())
         run_params = self.sonata_api.simulation_config['run']
         h.dt = run_params['dt']

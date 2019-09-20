@@ -32,7 +32,7 @@ class ReductionContext:
         return os.path.join(self._tmp_dir.name, 'edges')
 
 
-class NodePopulation:
+class NodePopulationReduction:
     def __init__(self, population, sonata_api):
         self._population = population
         self._sonata_api = sonata_api
@@ -69,7 +69,7 @@ class NodePopulation:
         for name, population in self._sonata_api.circuit.edges.items():
             properties = list(population.property_names)
             if population.target.name == self.name:
-                incoming_edges[population.name] = population.afferent_edges(node_id, properties)
+                incoming_edges[name] = population.afferent_edges(node_id, properties)
 
         return edges_to_df(incoming_edges)
 
@@ -78,29 +78,28 @@ class NodePopulation:
         with context.create_tmp_dir():
             with Pool(maxtasksperchild=1) as pool:
                 pool.map(
-                    partial(self._reduce_cell, context=context),
+                    partial(self._reduce_node, context=context),
                     self.get_biophys_node_ids())
             self._write_reduced_nodes(context)
             self._write_reduced_edges(context)
 
-    def _reduce_cell(self, node_id, context: ReductionContext):
-        from sonata_network_reduction.nrn_cell import BiophysCell
+    def _reduce_node(self, node_id, context: ReductionContext):
+        from sonata_network_reduction.node_reduction import BiophysNodeReduction
 
-        biophys_cell = BiophysCell(node_id, self)
-        biophys_cell.instantiate()
-        biophys_cell.reduce(0)
+        biophys_node = BiophysNodeReduction(node_id, self)
+        biophys_node.reduce(0)
 
-        biophys_cell.write_node(context.nodes_dirpath)
-        edges_dirpath = os.path.join(context.edges_dirpath, str(biophys_cell.node_id))
+        biophys_node.write_node(context.nodes_dirpath)
+        edges_dirpath = os.path.join(context.edges_dirpath, str(biophys_node.node_id))
         os.makedirs(edges_dirpath)
-        biophys_cell.incoming_synapses.write(edges_dirpath)
+        biophys_node.edges_reduction.write(edges_dirpath)
 
         biophysics_filepath = self._sonata_api.get_output_filepath(
-            biophys_cell.biophys_filepath, context.out_circuit_dirpath)
-        biophys_cell.write_biophysics(biophysics_filepath)
+            biophys_node.biophys_filepath, context.out_circuit_dirpath)
+        biophys_node.write_biophysics(biophysics_filepath)
         morphology_filepath = self._sonata_api.get_output_filepath(
-            biophys_cell.morphology_filepath, context.out_circuit_dirpath)
-        biophys_cell.write_morphology(morphology_filepath)
+            biophys_node.morphology_filepath, context.out_circuit_dirpath)
+        biophys_node.write_morphology(morphology_filepath)
 
     def _write_reduced_nodes(self, context: ReductionContext):
         nodes_filepath = self._sonata_api.get_population_output_filepath(
