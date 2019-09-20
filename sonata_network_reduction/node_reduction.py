@@ -8,7 +8,7 @@ from bluepyopt.ephys.models import CellModel, HocCellModel
 from bluepyopt.ephys.morphologies import NrnFileMorphology
 from hoc2swc import neuron2swc
 
-from biophysics import extract
+from biophysics import get_mechanisms_and_params
 from sonata_network_reduction import utils
 from sonata_network_reduction.node_population_reduction import NodePopulationReduction
 from sonata_network_reduction.edge_reduction import IncomingEdgesReduction
@@ -126,7 +126,7 @@ class BiophysNodeReduction:
             neuron2swc(filepath)
 
     def write_biophysics(self, filepath):
-        mechanisms, parameters = extract(self.get_section_list())
+        mechanisms, parameters = get_mechanisms_and_params(self.get_section_list())
         if self._ephys_model.morphology.do_replace_axon:
             replace_axon = self._ephys_model.morphology.replace_axon_hoc
         else:

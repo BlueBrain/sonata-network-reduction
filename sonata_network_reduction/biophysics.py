@@ -11,7 +11,7 @@ from neuron import h
 from nmodl import dsl
 
 
-def extract_sec_name_parts(sec_name):
+def _extract_sec_name_parts(sec_name):
     match = re.search(r'\w+\[[\d]+\]\.(?P<list_name>\w+)\[(?P<index>\d+)\]', sec_name)
     # we need to use section list names as they are in the template
     seclist_name = LOCATION_MAP[match.group('list_name')]
@@ -20,16 +20,43 @@ def extract_sec_name_parts(sec_name):
     return seclist_name, sec_name, sec_index
 
 
-def extract_mech_params(mech, loc):
+def _get_mech_params(mech, loc):
     params = []
     mech_name = mech.name()
-    mech_params = get_mech_params(mech_name)
+    mech_params = _get_nmodl_param_block(mech_name)
     for n in mech_params:
         if not hasattr(mech, n):
             continue
         v = getattr(mech, n)
         n_mech = n + '_' + mech_name
         params.append(NrnSectionParameter(n, v, locations=[loc], frozen=True, param_name=n_mech))
+    return params
+
+
+def _get_nmodl_param_block(mech_name):
+    """extracts params from mechanism's PARAMETER block
+
+    Args:
+        mech_name (str): mechanism name like `hh`
+
+    Returns:
+        dict: params<name, value>
+    """
+    mech_type = h.MechanismType(0)
+    mech_type.select(mech_name)
+    code = mech_type.code()
+    driver = dsl.NmodlDriver()
+    modast = driver.parse_string(code)
+    lookup_visitor = dsl.visitor.AstLookupVisitor()
+    param_block = lookup_visitor.lookup(modast, dsl.ast.AstNodeType.PARAM_ASSIGN)
+
+    params = {}
+    for param in param_block:
+        name = param.name.value.value
+        value = None
+        if param.value is not None:
+            value = param.value.value
+        params[name] = value
     return params
 
 
@@ -79,8 +106,8 @@ class Seclist:
             if not mech.is_ion():
                 mech_name = mech.name()
                 self._put_mech(mech_name, loc)
-                mech_params = get_mech_params(mech_name)
-                for param_name in mech_params:
+                nmodl_params = _get_nmodl_param_block(mech_name)
+                for param_name in nmodl_params:
                     if not hasattr(mech, param_name):
                         continue
                     param_value = getattr(mech, param_name)
@@ -94,8 +121,8 @@ class Seclist:
                     if mech.name() not in self._mechanisms:
                         print('Warning! Unidentified mech {} in sec {}'.format(
                             mech.name(), sec.name()))
-                    mech_params = get_mech_params(mech.name())
-                    for param_name in mech_params:
+                    nmodl_params = _get_nmodl_param_block(mech.name())
+                    for param_name in nmodl_params:
                         if not self._has_param(param_name, mech.name()):
                             print('Warning! Unidentified param {} in sec {}'.format(
                                 param_name, sec.name()))
@@ -131,39 +158,12 @@ class SeclistCache:
         self._cache[seclist_name].check(sec)
 
 
-def extract(sections):
+def get_mechanisms_and_params(sections):
     seclist_cache = SeclistCache()
     for sec in sections:
-        seclist_name, sec_name, sec_index = extract_sec_name_parts(sec.name())
+        seclist_name, sec_name, sec_index = _extract_sec_name_parts(sec.name())
         if seclist_cache.has(seclist_name):
             seclist_cache.check(seclist_name, sec)
         else:
             seclist_cache.put(seclist_name, sec)
     return seclist_cache.mechanisms, seclist_cache.params
-
-
-def get_mech_params(mech_name):
-    """extracts params from mechanism's PARAMETER block
-
-    Args:
-        mech_name (str): mechanism name like `hh`
-
-    Returns:
-        dict: params<name, value>
-    """
-    mech_type = h.MechanismType(0)
-    mech_type.select(mech_name)
-    code = mech_type.code()
-    driver = dsl.NmodlDriver()
-    modast = driver.parse_string(code)
-    lookup_visitor = dsl.visitor.AstLookupVisitor()
-    param_block = lookup_visitor.lookup(modast, dsl.ast.AstNodeType.PARAM_ASSIGN)
-
-    params = {}
-    for param in param_block:
-        name = param.name.value.value
-        value = None
-        if param.value is not None:
-            value = param.value.value
-        params[name] = value
-    return params
