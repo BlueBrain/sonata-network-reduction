@@ -8,6 +8,7 @@ from bluepyopt.ephys.locations import NrnSeclistLocation
 from bluepyopt.ephys.mechanisms import NrnMODMechanism
 from bluepyopt.ephys.parameters import NrnSectionParameter
 from neuron import h
+from nmodl import dsl
 
 
 def extract_sec_name_parts(sec_name):
@@ -156,43 +157,17 @@ def get_mech_params(mech_name):
     """
     mech_type = h.MechanismType(0)
     mech_type.select(mech_name)
-    parameters = {}
-    code = mech_type.code().split('\n')
-    inside_comment = False
-    inside_parameter = False
-    for line in code:
-        line = line.strip()
-        lineupper = line.upper()
-        if not line:
-            continue
-        if line[0] in ('?', ':'):
-            continue
-        if lineupper.startswith('COMMENT'):
-            inside_comment = True
-        elif lineupper.startswith('ENDCOMMENT'):
-            if not inside_comment:
-                raise ('Parse error')
-            inside_comment = False
-        elif not inside_comment:
-            if lineupper.startswith('PARAMETER'):
-                inside_parameter = True
-            elif lineupper.startswith('}') and inside_parameter:
-                inside_parameter = False
-            elif inside_parameter:
-                # discard any comments
-                # NB: colon can also appear as part of a CURIE in other parts of a mod file
-                #     but not in the PARAMETERS block
-                line = line.split(':')[0].strip()
-                if not line:
-                    continue
-                groups = re.match(
-                        r'(\w+)\s*(?:=\s*(-?[0-9.]+)\s*)?(.*)', line).groups()
-                varname, value, metadata = groups
-                parameters[varname] = {'value': value}
-                if metadata:
-                    parsed_metadata = re.match(r'(\((([\w/])+)\))?\s*(.*)', metadata).groups()
-                    if parsed_metadata[1] is not None:
-                        parameters[varname]['units'] = parsed_metadata[1]
-                    if parsed_metadata[-1]:
-                        parameters[varname]['bounds'] = parsed_metadata[-1]
-    return parameters
+    code = mech_type.code()
+    driver = dsl.NmodlDriver()
+    modast = driver.parse_string(code)
+    lookup_visitor = dsl.visitor.AstLookupVisitor()
+    param_block = lookup_visitor.lookup(modast, dsl.ast.AstNodeType.PARAM_ASSIGN)
+
+    params = {}
+    for param in param_block:
+        name = param.name.value.value
+        value = None
+        if param.value is not None:
+            value = param.value.value
+        params[name] = value
+    return params

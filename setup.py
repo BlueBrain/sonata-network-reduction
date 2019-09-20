@@ -32,6 +32,7 @@ setup(
         'pytest-xdist',
         'bluepyopt',
         'bluepysnap>=0.1.2',
+        'nmodl @ git+https://git@github.com/BlueBrain/nmodl.git@master#egg=nmodl',
         'hoc2swc @ git+https://git@github.com/JustasB/hoc2swc.git@master#egg=hoc2swc',
         'neuron_reduce @ git+https://git@github.com/orena1/neuron_reduce.git@master#egg=neuron_reduce',
         'aibs-circuit-converter @ git+ssh://git@github.com/BlueBrain/aibs-circuit-converter.git@master#egg=aibs-circuit-converter',
