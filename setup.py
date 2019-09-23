@@ -21,6 +21,8 @@ setup(
         "Tracker": "https://bbpteam.epfl.ch/project/issues/projects/NSETM/issues",
         "Source": "ssh://bbpcode.epfl.ch/nse/sonata-network-reduction",
     },
+    entry_points={
+        'console_scripts': ['sonata-network-reduction=sonata_network_reduction.cli:cli']},
     license="BBP-internal-confidential",
     install_requires=[
         'numpy',
@@ -33,9 +35,10 @@ setup(
         'pytest-xdist',
         'bluepyopt',
         'bluepysnap>=0.1.2',
+        'neuron_reduce>=0.0.6',
+        'click>=6.7',
+        'aibs-circuit-converter',
         'hoc2swc @ git+https://git@github.com/JustasB/hoc2swc.git@master#egg=hoc2swc',
-        'neuron_reduce @ git+https://git@github.com/orena1/neuron_reduce.git@master#egg=neuron_reduce',
-        'aibs-circuit-converter @ git+ssh://git@github.com/BlueBrain/aibs-circuit-converter.git@master#egg=aibs-circuit-converter',
     ],
     packages=find_packages(),
     classifiers=[

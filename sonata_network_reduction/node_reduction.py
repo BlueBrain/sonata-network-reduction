@@ -1,141 +1,182 @@
-import os
+"""Module that is responsible for single node reduction."""
+import shutil
+from pathlib import Path
 
-import neuron
 import neuron_reduce
-from aibs_circuit_converter import convert_to_hoc
 from bluepyopt.ephys import create_hoc
-from bluepyopt.ephys.models import CellModel, HocCellModel
+from bluepyopt.ephys import models
 from bluepyopt.ephys.morphologies import NrnFileMorphology
+from aibs_circuit_converter import convert_to_hoc
 from hoc2swc import neuron2swc
+import neuron
 
-from biophysics import get_mechanisms_and_params
+from sonata_network_reduction.biophysics import get_mechanisms_and_params
 from sonata_network_reduction import utils
 from sonata_network_reduction.network_reduction import NodePopulationReduction
 from sonata_network_reduction.edge_reduction import IncomingEdgesReduction
 
 
-class BiophysNodeReduction:
+class HocCellModel(models.HocCellModel):
+    """
+    For neurodamus templates. For an example see 'cell_template_neurodamus.jinja2' from BluePyMM.
+    """
 
-    def __init__(self, node_id, population_reduction: NodePopulationReduction):
+    def __init__(self, name, morphology_path, hoc_path=None, hoc_string=None, gid=0):
+        super().__init__(name, morphology_path, hoc_path, hoc_string)
+        self.gid = gid
+
+    def instantiate(self, sim=None):
+        sim.neuron.h.load_file('stdrun.hoc')
+        template_name = self.load_hoc_template(sim, self.hoc_string)
+        morph_path = self.morphology.morphology_path
+        self.cell = getattr(sim.neuron.h, template_name)(
+            self.gid, str(morph_path.parent), morph_path.name)
+        self.icell = self.cell.CellRef
+
+
+class BiophysNodeReduction:
+    """Wrapper around node for reduction"""
+
+    def __init__(self, node_id: int, population_reduction: NodePopulationReduction):
         self.node_id = node_id
-        self.population_reduction = population_reduction
-        self.node = self.population_reduction.get_node(self.node_id)
         self.edges_reduction = IncomingEdgesReduction(
             self, population_reduction.get_incoming_edges(node_id))
+        self._node = population_reduction.get_node(self.node_id)
+        self._population_reduction = population_reduction
         self._ephys_model = None
         self._is_reduced = False
+        self._instantiate()
 
     @property
-    def morphology_filename(self):
-        return self.node['morphology'] + '.swc'
-
-    @property
-    def morphology_filepath(self):
-        return os.path.join(
-            self.population_reduction.get_circuit_component('morphologies_dir'),
-            self.morphology_filename
+    def morphology_filepath(self) -> Path:
+        """
+        Returns:
+            absolute filepath to node's morphology file
+        """
+        return Path(
+            self._population_reduction.get_circuit_component('morphologies_dir'),
+            self._node['morphology'] + '.swc'
         )
 
     @property
-    def biophys_filename(self):
-        return os.path.basename(self.biophys_filepath)
-
-    @property
-    def biophys_filepath(self):
-        biophys_dir_path = self.population_reduction.get_circuit_component(
+    def biophys_filepath(self) -> Path:
+        """
+        Returns:
+            absolute filepath to node's biophys file
+        """
+        biophys_dir_path = self._population_reduction.get_circuit_component(
             'biophysical_neuron_models_dir')
-        if ':' in self.node['model_template']:
-            # this ':' is an artifact from official Sonata example networks
-            _, biophys_filename = self.node['model_template'].split(':')
+        if ':' in self._node['model_template']:
+            biophys_type, biophys_filename = self._node['model_template'].split(':')
+            if '.' not in biophys_filename:
+                biophys_filename = biophys_filename + '.' + biophys_type
         else:
-            biophys_filename = self.node['model_template']
-        return os.path.join(biophys_dir_path, biophys_filename)
+            biophys_filename = self._node['model_template']
+        return Path(biophys_dir_path, biophys_filename)
 
     @property
-    def template_name(self):
-        biophys_name = os.path.splitext(self.biophys_filename)[0]
-        morphology_name = os.path.splitext(self.morphology_filename)[0]
-        return '{}_{}'.format(
-            utils.to_valid_nrn_name(biophys_name),
-            utils.to_valid_nrn_name(morphology_name))
+    def template_name(self) -> str:
+        """
+        Returns:
+            name of template for this node in NEURON
+        """
+        return utils.to_valid_nrn_name(self.biophys_filepath.stem)
 
     def get_section_list(self):
-        return self.nrn.soma[0].wholetree()
-
-    @property
-    def nrn(self):
-        model = self._ephys_model
-        if not model:
-            return None
-        return model.icell
+        """
+        Returns:
+            List of all sections of ``self.nrn``.
+        """
+        return self._ephys_model.icell.soma[0].wholetree()
 
     def _instantiate(self):
+        """Instantiates itself in NEURON"""
         self._instantiate_node()
         self.edges_reduction.instantiate()
 
     def _instantiate_node(self):
-        biophys_filename = self.biophys_filename.lower()
-        if biophys_filename.endswith('.nml'):
-            biophysics = convert_to_hoc.load_neuroml(self.biophys_filepath)
+        """Instantiates only node without synapses in NEURON"""
+        if self.biophys_filepath.suffix == '.nml':
+            biophysics = convert_to_hoc.load_neuroml(str(self.biophys_filepath))
             mechanisms = convert_to_hoc.define_mechanisms(biophysics)
             parameters = convert_to_hoc.define_parameters(biophysics)
-            self._ephys_model = CellModel(
+            self._ephys_model = models.CellModel(
                 self.template_name,
-                NrnFileMorphology(self.morphology_filepath),
+                NrnFileMorphology(str(self.morphology_filepath)),
                 mechanisms,
                 parameters,
                 self.node_id
             )
-        elif biophys_filename.endswith('.hoc'):
+        elif self.biophys_filepath.suffix == '.hoc':
             self._ephys_model = HocCellModel(
                 self.template_name,
                 self.morphology_filepath,
-                self.biophys_filepath
+                str(self.biophys_filepath),
+                gid=self.node_id
             )
-            self._ephys_model.morphology = NrnFileMorphology(self.morphology_filepath)
         else:
             raise ValueError('Unsupported biophysics file {}'.format(self.biophys_filepath))
         self._ephys_model.instantiate(neuron)
 
-    def reduce(self, *args, **kwargs):
+    def reduce(self, **kwargs):
+        """Performs the node reduction. It can not be ran twice on the same instance.
+
+        Args:
+            **kwargs: arguments to pass to the underlying call of ``neuron_reduce.subtree_reductor``
+        """
         if self._is_reduced:
             raise RuntimeError('Reduction can be done only once and it is irreversible')
-        if not self.nrn:
-            self._instantiate()
         self._ephys_model.icell, reduced_synapse_list, reduced_netcon_list = \
             neuron_reduce.subtree_reductor(
-                self.nrn,
+                self._ephys_model.icell,
                 self.edges_reduction.synapses,
                 self.edges_reduction.netcons,
-                *args,
-                *kwargs, )
+                **kwargs, )
 
-        # reduced model always saved in .hoc
-        if '.nml' in self.node['model_template']:
-            self.node.at['model_template'] = self.node['model_template'].replace('.nml', '.hoc')
         self.edges_reduction.reduce(reduced_synapse_list, reduced_netcon_list)
         self._is_reduced = True
 
-    def write_node(self, output_dirpath):
-        filepath = os.path.join(output_dirpath, str(self.node_id) + '.json')
-        self.node.to_json(filepath)
+    def write_node(self, output_dirpath: Path):
+        """Save node as a json file.
 
-    def write_morphology(self, filepath):
-        neuron2swc(filepath)
+        Args:
+            output_dirpath: filepath to a directory where the json is saved
+        """
+        filepath = output_dirpath.joinpath(str(self.node_id) + '.json')
+        self._node.to_json(filepath)
 
-    def write_biophysics(self, filepath):
-        mechanisms, parameters = get_mechanisms_and_params(self.get_section_list())
-        if self._ephys_model.morphology.do_replace_axon:
-            replace_axon = self._ephys_model.morphology.replace_axon_hoc
-        else:
-            replace_axon = None
+    def write_morphology(self, filepath: Path):  # pylint: disable=no-self-use
+        """Save node's instantiated NEURON morphology as an '.swc' file.
 
-        biophysics = create_hoc.create_hoc(
-            mechs=mechanisms,
-            parameters=parameters,
-            morphology=self.morphology_filename,
-            replace_axon=replace_axon,
-            template_name=self.template_name)
+        Args:
+            filepath: path to a file where to save the morphology
+        """
+        neuron2swc(str(filepath))
 
-        with open(filepath, 'w') as f:
-            f.write(biophysics)
+    def write_biophysics(self, filepath: Path, keep_original=True):
+        """Save node's instantiated NEURON biophysics as a '.hoc' template from BluePyOpt.
+
+        The current preferred way is to save the original biophysics file as the reduction
+        does not change biophysics because each section list has uniform biophysics.
+        The another way is to extract all mechanisms and params, and create a '.hoc' biophysics
+        from them. This way is very rudimentary because it drops the previous cell details like
+        `do_replace_axon` or any other custom code that was presented in the original biophysics
+        '.hoc'. Although such details shouldn't be presented in the original '.hoc'. There should be
+        only biophysics spec.
+        Args:
+            filepath: path to a file where to save the morphology
+            keep_original: whether to keep the original biophysics file
+        """
+        if keep_original or self.biophys_filepath.suffix == '.hoc':
+            shutil.copyfile(str(self.biophys_filepath), str(filepath))
+        elif not keep_original and self.biophys_filepath.suffix == '.nml':
+            self._node.at['model_template'] = self._node['model_template'].replace('.nml', '.hoc')
+            mechanisms, parameters = get_mechanisms_and_params(self.get_section_list())
+            biophysics = create_hoc.create_hoc(
+                mechs=mechanisms,
+                parameters=parameters,
+                morphology=self.morphology_filepath.name,
+                template_name=self.template_name)
+
+            with filepath.open('w') as f:
+                f.write(biophysics)

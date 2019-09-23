@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 
 
-def compile_mod_files(tests_dirpath, mod_dirpath):
+def compile_mod_files(tests_dirpath: str, mod_dirpath: str):
     """
     Compiles mod files. It is very IMPORTANT to have `tests_dirpath` because we need compile mod files relative
     to `tests_dirpath`. If `mod_dirpath` is absolute then `nrnivmodl` fails to compile.
@@ -25,3 +25,4 @@ def compile_mod_files(tests_dirpath, mod_dirpath):
     if not os.path.isfile(compiled_mod_filepath):
         raise RuntimeError("Couldn't compile mod files", compiled_mod_filepath, stdout, stderr)
     return compiled_mod_dirpath, compiled_mod_filepath
+

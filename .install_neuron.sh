@@ -35,5 +35,7 @@ then
   echo "NEURON successfully installed"
 else
     echo 'Neuron was successfully installed in previous build, not rebuilding'
+    export PATH="${INSTALL_DIR}/nrn/x86_64/bin":${PATH}
+    export PYTHONPATH="${INSTALL_DIR}/nrn/lib/python":${PYTHONPATH}
 fi
 
