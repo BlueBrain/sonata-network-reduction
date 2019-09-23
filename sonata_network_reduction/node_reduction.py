@@ -10,7 +10,7 @@ from hoc2swc import neuron2swc
 
 from biophysics import get_mechanisms_and_params
 from sonata_network_reduction import utils
-from sonata_network_reduction.node_population_reduction import NodePopulationReduction
+from sonata_network_reduction.network_reduction import NodePopulationReduction
 from sonata_network_reduction.edge_reduction import IncomingEdgesReduction
 
 
@@ -121,9 +121,7 @@ class BiophysNodeReduction:
         self.node.to_json(filepath)
 
     def write_morphology(self, filepath):
-        # assume here that only our cell is loaded in Neuron
-        if not os.path.exists(filepath):
-            neuron2swc(filepath)
+        neuron2swc(filepath)
 
     def write_biophysics(self, filepath):
         mechanisms, parameters = get_mechanisms_and_params(self.get_section_list())

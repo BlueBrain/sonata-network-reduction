@@ -8,7 +8,6 @@ from bluepyopt.ephys.locations import NrnSeclistLocation
 from bluepyopt.ephys.mechanisms import NrnMODMechanism
 from bluepyopt.ephys.parameters import NrnSectionParameter
 from neuron import h
-from nmodl import dsl
 
 
 def _extract_sec_name_parts(sec_name):
@@ -23,7 +22,7 @@ def _extract_sec_name_parts(sec_name):
 def _get_mech_params(mech, loc):
     params = []
     mech_name = mech.name()
-    mech_params = _get_nmodl_param_block(mech_name)
+    mech_params = _get_nmodl_param_names(mech_name)
     for n in mech_params:
         if not hasattr(mech, n):
             continue
@@ -33,31 +32,23 @@ def _get_mech_params(mech, loc):
     return params
 
 
-def _get_nmodl_param_block(mech_name):
+def _get_nmodl_param_names(mech_name):
     """extracts params from mechanism's PARAMETER block
 
     Args:
         mech_name (str): mechanism name like `hh`
 
     Returns:
-        dict: params<name, value>
+        array of parameter names
     """
-    mech_type = h.MechanismType(0)
-    mech_type.select(mech_name)
-    code = mech_type.code()
-    driver = dsl.NmodlDriver()
-    modast = driver.parse_string(code)
-    lookup_visitor = dsl.visitor.AstLookupVisitor()
-    param_block = lookup_visitor.lookup(modast, dsl.ast.AstNodeType.PARAM_ASSIGN)
-
-    params = {}
-    for param in param_block:
-        name = param.name.value.value
-        value = None
-        if param.value is not None:
-            value = param.value.value
-        params[name] = value
-    return params
+    ms = h.MechanismStandard(mech_name, 1)
+    param_name = h.ref('')
+    param_names = []
+    for i in range(ms.count()):
+        ms.name(param_name, i)
+        param_names.append(param_name[0])
+    param_names = [name.split('_' + mech_name)[0] for name in param_names]
+    return param_names
 
 
 class Seclist:
@@ -106,7 +97,7 @@ class Seclist:
             if not mech.is_ion():
                 mech_name = mech.name()
                 self._put_mech(mech_name, loc)
-                nmodl_params = _get_nmodl_param_block(mech_name)
+                nmodl_params = _get_nmodl_param_names(mech_name)
                 for param_name in nmodl_params:
                     if not hasattr(mech, param_name):
                         continue
@@ -121,7 +112,7 @@ class Seclist:
                     if mech.name() not in self._mechanisms:
                         print('Warning! Unidentified mech {} in sec {}'.format(
                             mech.name(), sec.name()))
-                    nmodl_params = _get_nmodl_param_block(mech.name())
+                    nmodl_params = _get_nmodl_param_names(mech.name())
                     for param_name in nmodl_params:
                         if not self._has_param(param_name, mech.name()):
                             print('Warning! Unidentified param {} in sec {}'.format(

@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import shutil
 import tempfile
 from functools import partial
 from multiprocessing import Pool
@@ -10,7 +11,9 @@ import pandas as pd
 from bluepysnap.edges import DYNAMICS_PREFIX as EDGES_DYNAMICS_PREFIX
 from bluepysnap.nodes import DYNAMICS_PREFIX as NODES_DYNAMICS_PREFIX
 from cached_property import cached_property
+
 from sonata_network_reduction import utils
+from sonata_network_reduction.sonata_api import SonataApi
 
 
 class ReductionContext:
@@ -137,3 +140,17 @@ class NodePopulationReduction:
                 for column in dynamics_columns:
                     h5name = column.split(EDGES_DYNAMICS_PREFIX)[1]
                     edges_h5ref['dynamics_params/' + h5name][edges.index] = edges[column].to_numpy()
+
+
+def reduce_network(sonata_api: SonataApi, out_circuit_dirpath):
+    shutil.rmtree(out_circuit_dirpath, ignore_errors=True)
+    shutil.copytree(sonata_api.get_config_dirpath(), out_circuit_dirpath)
+
+    population_reductions = [NodePopulationReduction(population, sonata_api)
+                             for population in sonata_api.circuit.nodes.values()]
+    population_reductions = [population for population in population_reductions
+                             if not population.is_virtual()]
+    for population_reduction in population_reductions:
+        population_reduction.reduce(out_circuit_dirpath)
+
+
