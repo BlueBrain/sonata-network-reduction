@@ -162,12 +162,12 @@ def reduce_network(sonata_api: SonataApi, out_circuit_dirpath: str, **reduce_kwa
     """ Reduces the network represented by ``sonata_api`` param.
 
     The reduced network is saved to ``out_circuit_dirpath``.
+
     Args:
         sonata_api: SonataApi instance of the target
         out_circuit_dirpath: path to a directory where to save the reduced.
         **reduce_kwargs: arguments to pass to the underlying call of
-        ``neuron_reduce.subtree_reductor``.
-        like ``reduction_frequency``.
+            ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
     """
     out_circuit_dirpath = Path(out_circuit_dirpath)
     if out_circuit_dirpath.exists() and any(out_circuit_dirpath.iterdir()):

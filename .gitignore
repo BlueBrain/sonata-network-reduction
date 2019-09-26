@@ -4,5 +4,5 @@ coverage.xml
 *.egg-info
 .coverage
 doc/build
-docs/source/submodules
+doc/source/submodules
 .tox

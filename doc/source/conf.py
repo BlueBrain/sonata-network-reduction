@@ -1,3 +1,5 @@
+import re
+
 import sonata_network_reduction
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -156,6 +158,8 @@ html_show_sourcelink = False
 # This is the file name suffix for HTML files (e.g. ".xhtml").
 #html_file_suffix = None
 
+autodoc_default_options = {"members": True}
+
 # autosummary settings
 autosummary_generate = True
 autosummary_mock_imports = ['neuron']
@@ -199,3 +203,12 @@ latex_documents = [
 
 # If false, no module index is generated.
 #latex_domain_indices = True
+
+def _title_remove_module_name(app, docname, source):
+    """Remove the module name `sonata_network_reduction` from the heading of pages"""
+    # match with a "." so that it will only pick up submodule pages
+    module_re = re.compile(r"^sonata\\_network\\_reduction\.", re.MULTILINE)
+    source[0] = module_re.sub("", source[0])
+
+def setup(app):
+    app.connect("source-read", _title_remove_module_name)

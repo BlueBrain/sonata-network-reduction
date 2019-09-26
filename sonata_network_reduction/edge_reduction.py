@@ -73,6 +73,7 @@ class IncomingEdgesReduction:
         """Writes edges as a set of '.json'.
 
         Each '.json' file contains all edges from the same edge population.
+
         Args:
             output_dirpath: path to a dir where to save '.json' files
         """

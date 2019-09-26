@@ -163,6 +163,7 @@ class BiophysNodeReduction:
         `do_replace_axon` or any other custom code that was presented in the original biophysics
         '.hoc'. Although such details shouldn't be presented in the original '.hoc'. There should be
         only biophysics spec.
+
         Args:
             filepath: path to a file where to save the morphology
             keep_original: whether to keep the original biophysics file
