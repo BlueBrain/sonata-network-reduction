@@ -94,6 +94,7 @@ class NodePopulationReduction:
             nodes_dirpath: Temp dir for serialized nodes
             edges_dirpath: Temp dir for serialized edges
         """
+        # pylint: disable=import-outside-toplevel
         from sonata_network_reduction.node_reduction import BiophysNodeReduction
 
         biophys_node = BiophysNodeReduction(node_id, self)
