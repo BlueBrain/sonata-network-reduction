@@ -1,18 +1,23 @@
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 
 
-def compile_mod_files(tests_dirpath: str, mod_dirpath: str):
-    """
-    Compiles mod files. It is very IMPORTANT to have `tests_dirpath` because we need compile mod files relative
-    to `tests_dirpath`. If `mod_dirpath` is absolute then `nrnivmodl` fails to compile.
-    :param tests_dirpath: directory of tests
-    :param mod_dirpath: directory with mod files
-    :return: (path to directory with compiled mod files, path to `libnrnmech.so` file)
+def compile_mod_files(tests_dirpath: Path, mod_dirpath: Path):
+    """Compiles mod files. It is very IMPORTANT to have `tests_dirpath` because we need compile mod
+    files relative to `tests_dirpath`. If `mod_dirpath` is absolute then `nrnivmodl` fails to
+    compile.
+
+    Args:
+        tests_dirpath: directory of tests
+        mod_dirpath: directory with mod files
+
+    Returns:
+        Tuple of (path to directory with compiled mod files, path to `libnrnmech.so` file)
     """
     compiled_mod_dirpath = tempfile.mkdtemp(dir=tests_dirpath)
-    rel_compiled_mod_dirpath = os.path.relpath(mod_dirpath, start=compiled_mod_dirpath)
+    rel_compiled_mod_dirpath = os.path.relpath(str(mod_dirpath), start=compiled_mod_dirpath)
     process = subprocess.Popen(
         ['nrnivmodl', rel_compiled_mod_dirpath],
         stdout=subprocess.PIPE,
@@ -21,8 +26,8 @@ def compile_mod_files(tests_dirpath: str, mod_dirpath: str):
     )
     stdout, stderr = process.communicate()
     only_child_dir = os.listdir(compiled_mod_dirpath)[0]
-    compiled_mod_filepath = os.path.join(compiled_mod_dirpath, only_child_dir, '.libs', 'libnrnmech.so')
+    compiled_mod_filepath = os.path.join(
+        compiled_mod_dirpath, only_child_dir, '.libs', 'libnrnmech.so')
     if not os.path.isfile(compiled_mod_filepath):
         raise RuntimeError("Couldn't compile mod files", compiled_mod_filepath, stdout, stderr)
     return compiled_mod_dirpath, compiled_mod_filepath
-

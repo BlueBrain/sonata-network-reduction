@@ -1,128 +1,74 @@
-import glob
-import os
 import shutil
 import tempfile
+from pathlib import Path
 
-import neuron
-from aibs_circuit_converter import convert_to_hoc
-from bluepyopt.ephys.models import CellModel
-from bluepyopt.ephys.morphologies import NrnFileMorphology
+import neurom
+from bluepysnap import Circuit
 from neuron import h
 
-import helpers.utils as utils
-from sonata_network_reduction.edge_reduction import AFFERENT_SEC_ID
-from sonata_network_reduction.network_reduction import NodePopulationReduction, reduce_network
-from sonata_network_reduction.node_reduction import BiophysNodeReduction
-from sonata_network_reduction.sonata_api import SonataApi
+from helpers import utils
+from sonata_network_reduction.node_reduction import _get_morphology_filepath, _get_biophys_filepath
+from sonata_network_reduction.network_reduction import reduce_network
+
+
+def _get_node_section_map(node_population_name, sonata_circuit):
+    node_section_map = {}
+    node_population = sonata_circuit.nodes[node_population_name]
+    for node_id in node_population.ids():
+        node = node_population.get(node_id)
+        morphology_filepath = _get_morphology_filepath(node, sonata_circuit)
+        m = neurom.load_neuron(str(morphology_filepath))
+        node_section_map[node_id] = neurom.get('number_of_sections', m)[0]
+    return node_section_map
 
 
 class Test9CellsClass:
 
     @classmethod
     def setup_class(cls):
-        current_dirpath = os.path.dirname(os.path.abspath(__file__))
-        config_dirpath = os.path.join(current_dirpath, 'data', '9cells')
-        cls.circuit_config_filepath = os.path.join(config_dirpath, 'circuit_config.json')
-        cls.simulation_config_filepath = os.path.join(config_dirpath, 'simulation_config.json')
-        cls.sonata_api = SonataApi(cls.circuit_config_filepath, cls.simulation_config_filepath)
-
+        current_dirpath = Path(__file__).resolve().parent
+        config_dirpath = current_dirpath.joinpath('data', '9cells')
+        cls.circuit_config_filepath = config_dirpath.joinpath('bglibpy_circuit_config.json')
+        cls.sonata_circuit = Circuit(str(cls.circuit_config_filepath))
         # load mod files for tests
-        mod_dirpath = os.path.join(
-            cls.sonata_api.circuit_config['components']['mechanisms_dir'],
-            'modfiles')
-        tests_dirpath = os.path.dirname(os.path.abspath(__file__))
+        mod_dirpath = Path(cls.sonata_circuit.config['components']['mechanisms_dir'], 'modfiles')
         cls._compiled_mod_dirpath, compiled_mod_filepath = \
-            utils.compile_mod_files(tests_dirpath, mod_dirpath)
+            utils.compile_mod_files(current_dirpath, mod_dirpath)
         h.nrn_load_dll(compiled_mod_filepath)
 
+    @classmethod
     def teardown_class(cls):
         shutil.rmtree(cls._compiled_mod_dirpath)
 
-    def _create_node_population_reduction(self, population_name):
-        return NodePopulationReduction(
-            self.sonata_api.circuit.nodes[population_name],
-            self.sonata_api, '', reduction_frequency=0)
-
-    def _create_node_reduction(self, population_name, node_id):
-        population_reduction = self._create_node_population_reduction(population_name)
-        return BiophysNodeReduction(node_id, population_reduction)
-
-    def test_instantiate_cortex_gid_0(self):
-        node_reduction = self._create_node_reduction('cortex', 0)
-        assert hasattr(h, node_reduction.template_name)
-        assert len(node_reduction.get_section_list()) == 123
-        assert len(node_reduction.edges_reduction) == 143
-
-    def test_instantiate_cortex_gid_4(self):
-        node_reduction = self._create_node_reduction('cortex', 4)
-        assert hasattr(h, node_reduction.template_name)
-        assert len(node_reduction.get_section_list()) == 64
-        assert len(node_reduction.edges_reduction) == 144
-
-    def test_instantiate_cortex_gid_7(self):
-        node_reduction = self._create_node_reduction('cortex', 7)
-        assert hasattr(h, node_reduction.template_name)
-        assert len(node_reduction.get_section_list()) == 38
-        assert len(node_reduction.edges_reduction) == 139
-
-    def test_reduce_cortex_gid_0(self):
-        node_reduction = self._create_node_reduction('cortex', 0)
-        original_sections_len = len(node_reduction.get_section_list())
-        run_params = self.sonata_api.simulation_config['run']
-        h.dt = run_params['dt']
-        h.tstop = run_params['tstop']
-
-        soma_v = h.Vector()
-        soma_v.record(node_reduction._ephys_model.icell.soma[0](0.5)._ref_v)
-        h.run()
-
-        node_reduction.reduce(reduction_frequency=0)
-        reduced_sections_len = len(node_reduction.get_section_list())
-        reduced_soma_v = h.Vector()
-        reduced_soma_v.record(node_reduction._ephys_model.icell.soma[0](0.5)._ref_v)
-        h.run()
-
-        assert original_sections_len > reduced_sections_len
-        print(reduced_sections_len)
-
     def test_reduce_network(self):
-        def create_ephys_model_from_nml(biophys_filepath, morph_filepath):
-            biophysics = convert_to_hoc.load_neuroml(str(biophys_filepath))
-            mechanisms = convert_to_hoc.define_mechanisms(biophysics)
-            parameters = convert_to_hoc.define_parameters(biophysics)
-            model = CellModel(
-                'node',
-                NrnFileMorphology(str(morph_filepath)),
-                mechanisms,
-                parameters
-            )
-            model.instantiate(neuron)
-            return model
+        node_population_name = 'cortex'
 
-        node_expected_sec_len = {0: 13, 1: 13, 2: 13, 3: 7, 4: 7, 5: 7, 6: 7, 7: 7, 8: 7}
+        original_node_sections = _get_node_section_map(node_population_name, self.sonata_circuit)
+
         with tempfile.TemporaryDirectory() as out_dirpath:
-            reduce_network(self.sonata_api, out_dirpath, reduction_frequency=0)
+            out_dirpath = Path(out_dirpath)
 
-            out_sonata_api = SonataApi(
-                os.path.join(out_dirpath, os.path.basename(self.circuit_config_filepath)),
-                os.path.join(out_dirpath, os.path.basename(self.simulation_config_filepath)))
-            node_population = out_sonata_api.circuit.nodes['cortex']
+            reduce_network(self.circuit_config_filepath, str(out_dirpath), reduction_frequency=0)
+            reduced_sonata_circuit = Circuit(
+                str(out_dirpath.joinpath(self.circuit_config_filepath.name)))
+            reduced_node_sections = _get_node_section_map(
+                node_population_name, reduced_sonata_circuit)
+            for node_id, sections_num in original_node_sections.items():
+                assert sections_num > reduced_node_sections[node_id]
+
+            node_population = reduced_sonata_circuit.nodes[node_population_name]
             for node_id in node_population.ids():
                 node = node_population.get(node_id)
-                morph_filename = node['morphology'] + '.swc'
-                biophys_filename = os.path.basename(node['model_template'])
-                morph_filepath = glob.glob(out_dirpath + '/**/' + morph_filename, recursive=True)
-                assert len(morph_filepath) == 1
-                morph_filepath = morph_filepath[0]
-                biophys_filepath = glob.glob(
-                    out_dirpath + '/**/' + biophys_filename, recursive=True)
-                assert len(biophys_filepath) == 1
-                biophys_filepath = biophys_filepath[0]
+                morphology_filepath = _get_morphology_filepath(node, reduced_sonata_circuit)
+                assert morphology_filepath.is_file()
+                biophys_filepath = _get_biophys_filepath(node, reduced_sonata_circuit)
+                assert biophys_filepath.is_file()
 
-                model = create_ephys_model_from_nml(biophys_filepath, morph_filepath)
-                actual_sec_len = len(model.icell.soma[0].wholetree())
-                SAFETY_MARGIN = 5  # algorithm results may vary that is why we have this margin
-                assert actual_sec_len <= node_expected_sec_len[node_id] + SAFETY_MARGIN
+                if not hasattr(h, biophys_filepath.stem):
+                    h.load_file(str(biophys_filepath))
+                biophys_class = getattr(h, biophys_filepath.stem)
+                biophys_class(0, str(morphology_filepath.parent), morphology_filepath.name)
 
-                edges = out_sonata_api.get_incoming_edges(node_population.name, node_id)
-                assert edges[AFFERENT_SEC_ID].max() < node_expected_sec_len[node_id]
+                for _, edge_population in reduced_sonata_circuit.edges.items():
+                    edges = edge_population.afferent_edges(node_id, 'morpho_section_id_post')
+                    assert edges.le(reduced_node_sections[node_id]).all()

@@ -1,86 +1,155 @@
-"""Module that is responsible for edges reduction"""
-from pathlib import Path
+"""Module that is responsible for single node reduction."""
+from collections import OrderedDict
 from typing import List
 
-from bluepysnap.edges import DYNAMICS_PREFIX
-from neuron import h  # pylint: disable=E0611
+import pandas as pd
+from bglibpy import Cell, Synapse
+from bluepysnap import Circuit
+from neuron import h
 
-AFFERENT_SEC_POS = 'afferent_section_pos'
-AFFERENT_SEC_ID = 'afferent_section_id'
+from sonata_network_reduction.morphology import CurrentNeuronMorphology
+
+EDGES_INDEX_POPULATION = 'population'
+EDGES_INDEX_AFFERENT = 'afferent'
 
 
-class IncomingEdgesReduction:
-    """Wrapper around incoming edges for reduction"""
+def get_edges(sonata_circuit: Circuit, node_population_name: str, node_id: int):
+    """Gets all edges for a given node
 
-    def __init__(self, target_node, edges):
-        """
-        Args:
-            target_node (BiophysNodeReduction):
-            edges (pandas.DataFrame):
-        """
-        self._target_node = target_node
+    Args:
+        sonata_circuit: sonata circuit
+        node_population_name: node population name
+        node_id: node id
 
-        self.synapses = []
-        self.netcons = []
-        self.edges = edges
+    Returns:
+        pandas DataFrame of edges where columns are edge properties and index is
+        (edge population name, is edge afferent or not, edge idx).
+    """
+    edges_list = []
+    for name, population in sonata_circuit.edges.items():
+        properties = list(population.property_names)
+        if population.target.name == node_population_name:
+            edges_list.append((name, True, population.afferent_edges(node_id, properties)))
+        # For now we ignore efferent connections
+        # if population.source.name == node_population_name:
+        #     edges_list.append((name, False, population.efferent_edges(node_id, properties)))
+    if len(edges_list) == 0:
+        return pd.DataFrame()
+    return pd.concat(
+        [item[2] for item in edges_list],
+        keys=[(item[0], item[1]) for item in edges_list],
+        names=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT, 'idx'])
 
-    def instantiate(self):  # pylint: disable=too-many-locals
-        """Instantiates itself in NEURON"""
-        dynamics_cols_idx = self.edges.columns.str.startswith(DYNAMICS_PREFIX)
-        for i in range(len(self.edges.index)):
-            edge = self.edges.iloc[i]
-            synapse_classname = getattr(edge, 'model_template')
-            synapse_weight = getattr(edge, 'syn_weight')
-            section_x = getattr(edge, AFFERENT_SEC_POS)
-            section_id = getattr(edge, AFFERENT_SEC_ID)
-            delay = getattr(edge, 'delay')
 
-            synapse_class = getattr(h, synapse_classname)
-            section = self._target_node.get_section_list()[section_id]
-            synapse = synapse_class(section(section_x))
-            edge_dynamics = edge.loc[dynamics_cols_idx]
-            for k, v in edge_dynamics.items():
-                setattr(synapse, k.replace(DYNAMICS_PREFIX, ''), v)
-            self.synapses.append(synapse)
+def instantiate_edges_sonata(edges: pd.DataFrame):
+    """Deprecated for now. Instantiates edges in NEURON.
 
-            netcon = h.NetCon(None, synapse)
-            netcon.delay = delay
-            netcon.weight[0] = synapse_weight
-            self.netcons.append(netcon)
+    Args:
+        edges: edges Dataframe
 
-    def reduce(self, reduced_synapse_list: List, reduced_netcon_list: List):
-        """Updates edges after reduction.
+    Returns:
+        list of synapses corresponding to edges.
+    """
+    # pylint: disable=too-many-locals, import-outside-toplevel
+    from bluepysnap.edges import DYNAMICS_PREFIX
+    morphology = CurrentNeuronMorphology()
+    dynamics_cols_idx = edges.columns.str.startswith(DYNAMICS_PREFIX)
+    synapses = []
+    for i in range(len(edges.index)):
+        edge = edges.iloc[i]
+        synapse_classname = edge['model_template']
+        section_x = edge['afferent_section_pos']
+        section_id = edge['afferent_section_id']
 
-        Args:
-            reduced_synapse_list (List[h.Synapse]): list of synapses after reduction
-            reduced_netcon_list (List[h.NetCon]): list of netcons after reduction
-        """
-        cols = self.edges.columns
-        for reduced_netcon_idx, reduced_netcon in enumerate(reduced_netcon_list):
-            postseg = reduced_netcon.postseg()
-            pos = postseg.x
-            sec = postseg.sec
-            sec_id = self._target_node.get_section_list().index(sec)
-            netcon = self.netcons[reduced_netcon_idx]
-            if netcon != reduced_netcon:
-                raise RuntimeError('Reduce Algorithm changed. Please revise `reduce` method.')
-            self.edges.iloc[reduced_netcon_idx, cols.get_loc(AFFERENT_SEC_POS)] = pos
-            self.edges.iloc[reduced_netcon_idx, cols.get_loc(AFFERENT_SEC_ID)] = sec_id
-        self.synapses = reduced_synapse_list
-        self.netcons = reduced_netcon_list
+        synapse_class = getattr(h, synapse_classname)
+        section = morphology.get_section(section_id)
+        synapse = synapse_class(section(section_x))
+        edge_dynamics = edge.loc[dynamics_cols_idx]
+        for k, v in edge_dynamics.items():
+            setattr(synapse, k.replace(DYNAMICS_PREFIX, ''), v)
+        synapses.append(synapse)
+    return synapses
 
-    def write(self, output_dirpath: Path):
-        """Writes edges as a set of '.json'.
 
-        Each '.json' file contains all edges from the same edge population.
+def instantiate_edges_bglibpy(edges: pd.DataFrame, bglibpy_cell: Cell):
+    """Instantiates edges in NEURON.
 
-        Args:
-            output_dirpath: path to a dir where to save '.json' files
-        """
-        for population_name, edges in self.edges.groupby(level='population'):
-            edges.reset_index(level='population', drop=True, inplace=True)
-            filepath = output_dirpath.joinpath(output_dirpath, population_name + '.json')
-            edges.to_json(filepath)
+    Args:
+        edges: edges
+        bglibpy_cell: edges cell in BGLibPy
 
-    def __len__(self):
-        return len(self.netcons)
+    Returns:
+        list of synapses and dict of netcons corresponding to edges.
+    """
+    synapses = []
+    netcons_map = OrderedDict()
+    for edge in edges.itertuples():
+        is_afferent = edge.Index[1]
+        syn_description = [
+            0,  # 0 mock of `pre_gid`
+            edge.delay,  # 1
+            edge.morpho_section_id_post if is_afferent else edge.morpho_section_id_pre,  # 2
+            edge.morpho_segment_id_post if is_afferent else edge.morpho_segment_id_pre,  # 3
+            edge.morpho_offset_segment_post if is_afferent else edge.morpho_offset_segment_pre,  # 4
+            None,  # 5
+            None,  # 6
+            None,  # 7
+            None,  # 8 weight
+            edge.u_syn,  # 9
+            edge.depression_time,  # 10
+            edge.facilitation_time,  # 11
+            edge.decay_time,  # 12
+            edge.syn_type_id,  # 13
+            None,  # 14
+            None,  # 15
+            None,  # 16
+            edge.n_rrp_vesicles,  # 17
+        ]
+        location = bglibpy_cell.synlocation_to_segx(
+            syn_description[2], syn_description[3], syn_description[4])
+        synapse = Synapse(
+            bglibpy_cell,
+            location,
+            ('', 0),  # mock of `syn_id`
+            syn_description,
+            [],  # mock of `connection_parameters`
+            None,  # mock of `base_seed`
+        )
+        synapses.append(synapse.hsynapse)
+        if is_afferent:
+            netcons_map[edge.Index] = h.NetCon(None, synapse.hsynapse)
+        else:
+            netcons_map[edge.Index] = h.NetCon(synapse.hsynapse, None)
+    return synapses, netcons_map
+
+
+def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges: pd.DataFrame,
+                         morphology: CurrentNeuronMorphology):
+    """Update edges Dataframe inplace with new reduced properties.
+
+    Args:
+        reduced_netcons: reduced cell netcons
+        netcons_map: original map between netcons and edges
+        edges: edges
+        morphology: reduced cell morphology
+    """
+    for (edge_index, netcon), reduced_netcon in zip(iter(netcons_map.items()), reduced_netcons):
+        if netcon != reduced_netcon:
+            raise RuntimeError('Reduce Algorithm changed. Please revise `reduce` method.')
+        is_afferent = edge_index[1]
+        if is_afferent:
+            syn = reduced_netcon.syn()
+        else:
+            syn = reduced_netcon.pre()
+        seg = syn.get_segment()
+        sec = seg.sec
+        segments = list(sec)
+        ipt = segments.index(seg) + 1
+        # half_seg_len = h.distance(sec(0), sec(1. / len(segments) * .5))
+        sec_id = morphology.get_section_id(sec)
+        edges.at[edge_index,
+                 'morpho_section_id_post' if is_afferent else 'morpho_section_id_pre'] = sec_id
+        edges.at[edge_index,
+                 'morpho_segment_id_post' if is_afferent else 'morpho_segment_id_pre'] = ipt
+        edges.at[edge_index,
+                 'morpho_offset_segment_post' if is_afferent else 'morpho_offset_segment_pre'] = 0

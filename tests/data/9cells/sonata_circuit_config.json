@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "$NETWORK_DIR": "./network",
+    "$NETWORK_DIR": "./network/sonata",
     "$COMPONENT_DIR": "./components"
   },
 

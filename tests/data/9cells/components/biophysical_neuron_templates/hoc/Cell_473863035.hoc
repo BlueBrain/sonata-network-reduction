@@ -1,0 +1,331 @@
+/*
+Created by BluePyOpt(1.8.54) at 2019-12-06 12:48:23.765761
+*/
+{load_file("stdrun.hoc")}
+{load_file("import3d.hoc")}
+
+begintemplate Cell_473863035
+  public init, morphology, geom_nseg_fixed, geom_nsec, getCell, getCCell, setCCell, gid, getCell
+  public channel_seed, channel_seed_set
+  public connect2target, clear, ASCIIrpt
+  public soma, dend, apic, axon, myelin, getThreshold
+  create soma[1], dend[1], apic[1], axon[1], myelin[1]
+  public nSecAll, nSecSoma, nSecApical, nSecBasal, nSecMyelinated, nSecAxonalOrig, nSecAxonal
+  public CellRef, synHelperList, synlist
+  objref this, CellRef, segCounts, ASCIIrpt, synHelperList, synlist
+
+  public all, somatic, apical, axonal, basal, myelinated, APC
+  objref all, somatic, apical, axonal, basal, myelinated, APC
+
+
+obfunc getCell(){
+        return this
+}
+
+obfunc getCCell(){
+	return CellRef
+}
+proc setCCell(){
+       CellRef = $o1
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * When clearing the model, the circular reference between Cells and CCells must be broken so the
+ * entity watching reference counts can work.
+ */
+proc clear() { localobj nil
+    CellRef = nil
+}
+
+
+
+/*!
+ * @param $o1 NetCon source (can be nil)
+ * @param $o2 Variable where generated NetCon will be placed
+ */
+proc connect2target() { //$o1 target point process, $o2 returned NetCon
+  soma $o2 = new NetCon(&v(1), $o1)
+  $o2.threshold = -30
+}
+
+
+proc init(/* args: morphology_dir, morphology_name */) {
+  all = new SectionList()
+  apical = new SectionList()
+  axonal = new SectionList()
+  basal = new SectionList()
+  somatic = new SectionList()
+  myelinated = new SectionList()
+
+  synHelperList = new List()
+  synlist = new List()
+
+  //For compatibility with BBP CCells
+  CellRef = this
+
+  forall delete_section()
+
+  gid = $1
+
+  if(numarg() >= 3) {
+    load_morphology($s2, $s3)
+  } else {
+    load_morphology($s2, "Nr5a1_471087815_m.swc")
+  }
+
+  geom_nseg()
+  indexSections()
+  insertChannel()
+  biophys()
+
+  // Initialize channel_seed_set to avoid accidents
+  channel_seed_set = 0
+  // Initialize random number generators
+  re_init_rng()
+}
+
+/*!
+ * Assign section indices to the section voltage value.  This will be useful later for serializing
+ * the sections into an array.  Note, that once the simulation begins, the voltage values will revert to actual data again.
+ *
+ * @param $o1 Import3d_GUI object
+ */
+proc indexSections() { local index
+    index = 0
+    forsec all {
+        v(0.0001) = index
+        index = index +1
+    }
+}
+
+func getThreshold() { return 0.0 }
+
+proc load_morphology(/* morphology_dir, morphology_name */) {localobj morph, import, sf, extension
+  strdef morph_path
+  sprint(morph_path, "%s/%s", $s1, $s2)
+
+  sf = new StringFunctions()
+  extension = new String()
+
+  sscanf(morph_path, "%s", extension.s)
+  sf.right(extension.s, sf.len(extension.s)-4)
+
+  if(strcmp(extension.s, ".ASC") == 0 ){
+    extension.s = ".asc"
+    sf.left(morph_path, sf.len(morph_path)-3)
+    sprint(morph_path,"%s%s",morph_path,"asc")
+    print "USING LOWERCASE EXTENSION", morph_path
+  }
+
+
+  if( strcmp(extension.s, ".asc") == 0 ) {
+    morph = new Import3d_Neurolucida3()
+  } else if( strcmp(extension.s, ".swc" ) == 0) {
+    morph = new Import3d_SWC_read()
+  } else {
+    printf(extension.s)
+    printf("Unsupported file format: Morphology file has to end with .asc or .swc" )
+    quit()
+  }
+
+  morph.quiet = 1
+  morph.input(morph_path)
+
+  import = new Import3d_GUI(morph, 0)
+  import.instantiate(this)
+}
+
+/*
+ * Assignment of mechanism values based on distance from the soma
+ * Matches the BluePyOpt method
+ */
+proc distribute_distance(){local x localobj sl
+  strdef stmp, distfunc, mech
+
+  sl = $o1
+  mech = $s2
+  distfunc = $s3
+  this.soma[0] distance(0, 0.5)
+  sprint(distfunc, "%%s %s(%%f) = %s", mech, distfunc)
+  forsec sl for(x, 0) {
+    sprint(stmp, distfunc, secname(), x, distance(x))
+    execute(stmp)
+  }
+}
+
+proc geom_nseg() {
+  this.geom_nsec() //To count all sections
+  //TODO: geom_nseg_fixed depends on segCounts which is calculated by
+  //  geom_nsec.  Can this be collapsed?
+  this.geom_nseg_fixed(40)
+  this.geom_nsec() //To count all sections
+}
+
+proc insertChannel() {
+  forsec this.all {
+  }
+  forsec this.apical {
+    insert pas
+  }
+  forsec this.axonal {
+    insert pas
+  }
+  forsec this.basal {
+    insert pas
+  }
+  forsec this.somatic {
+    insert Im
+    insert Ih
+    insert NaTs
+    insert Nap
+    insert K_P
+    insert K_T
+    insert SK
+    insert Kv3_1
+    insert pas
+    insert Ca_HVA
+    insert Ca_LVA
+    insert CaDynamics
+  }
+  forsec this.myelinated {
+  }
+}
+
+proc biophys() {
+  
+  forsec CellRef.all {
+    Ra = 122.88
+  }
+  
+  forsec CellRef.apical {
+    g_pas = 5.9318998497700001e-06
+    e_pas = -89.461402893100001
+    cm = 2.2799999999999998
+  }
+  
+  forsec CellRef.axonal {
+    g_pas = 0.00021542161812900001
+    e_pas = -89.461402893100001
+    cm = 1
+  }
+  
+  forsec CellRef.basal {
+    g_pas = 6.2827249623699998e-06
+    e_pas = -89.461402893100001
+    cm = 2.2799999999999998
+  }
+  
+  forsec CellRef.somatic {
+    gbar_Im = 0.00204889965055
+    ek = -107
+    gbar_Ih = 3.7269252292e-05
+    ehcn_Ih = -45
+    gbar_NaTs = 0.60927080502300002
+    ena = 53
+    gbar_Nap = 6.2161868365100004e-05
+    ena = 53
+    gbar_K_P = 0.018147424450600001
+    ek = -107
+    gbar_K_T = 0.000555828337834
+    ek = -107
+    gbar_SK = 0.00041743171143299998
+    ek = -107
+    gbar_Kv3_1 = 0.124684879699
+    ek = -107
+    g_pas = 0.00054589151280800001
+    e_pas = -89.461402893100001
+    gbar_Ca_HVA = 0.00097272189665799998
+    gbar_Ca_LVA = 0.0066296509568100001
+    cm = 1
+    gamma_CaDynamics = 0.00071152004894800005
+    decay_CaDynamics = 798.67999240300003
+    depth_CaDynamics = 0.10000000000000001
+    minCai_CaDynamics = 0.0001
+  }
+  
+  forsec CellRef.myelinated {
+  }
+  
+}
+
+func sec_count(/* SectionList */) { local nSec
+  nSec = 0
+  forsec $o1 {
+      nSec += 1
+  }
+  return nSec
+}
+
+/*
+ * Iterate over the section and compute how many segments should be allocate to
+ * each.
+ */
+proc geom_nseg_fixed(/* chunkSize */) { local secIndex, chunkSize
+  chunkSize = $1
+  soma area(.5) // make sure diam reflects 3d points
+  secIndex = 0
+  forsec all {
+    nseg = 1 + 2*int(L/chunkSize)
+    segCounts.x[secIndex] = nseg
+    secIndex += 1
+  }
+}
+
+/*
+ * Count up the number of sections
+ */
+proc geom_nsec() { local nSec
+  nSecAll = sec_count(all)
+  nSecSoma = sec_count(somatic)
+  nSecApical = sec_count(apical)
+  nSecBasal = sec_count(basal)
+  nSecMyelinated = sec_count(myelinated)
+  nSecAxonalOrig = nSecAxonal = sec_count(axonal)
+
+  segCounts = new Vector()
+  segCounts.resize(nSecAll)
+  nSec = 0
+  forsec all {
+    segCounts.x[nSec] = nseg
+    nSec += 1
+  }
+}
+
+func hash_str() {localobj sf strdef right
+  sf = new StringFunctions()
+
+  right = $s1
+
+  n_of_c = sf.len(right)
+
+  hash = 0
+  char_int = 0
+  for i = 0, n_of_c - 1 {
+     sscanf(right, "%c", & char_int)
+     hash = (hash * 31 + char_int) % (2 ^ 31 - 1)
+     sf.right(right, 1)
+  }
+
+  return hash
+}
+
+proc re_init_rng() {localobj sf
+    strdef full_str, name
+
+    sf = new StringFunctions()
+
+    if(numarg() == 1) {
+        // We received a third seed
+        channel_seed = $1
+        channel_seed_set = 1
+    } else {
+        channel_seed_set = 0
+    }
+
+
+}
+
+
+endtemplate Cell_473863035_cell

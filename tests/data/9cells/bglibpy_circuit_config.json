@@ -1,0 +1,39 @@
+{
+  "manifest": {
+    "$NETWORK_DIR": "./network/",
+    "$COMPONENT_DIR": "./components"
+  },
+
+  "components": {
+    "morphologies_dir": "$COMPONENT_DIR/morphologies",
+    "mechanisms_dir":"$COMPONENT_DIR/mechanisms",
+    "biophysical_neuron_models_dir": "$COMPONENT_DIR/biophysical_neuron_templates"
+  },
+
+  "networks": {
+    "nodes": [
+      {
+        "nodes_file": "$NETWORK_DIR/bglibpy/nodes/cortex.h5",
+        "node_types_file": null
+      },
+      {
+        "nodes_file": "$NETWORK_DIR/sonata/excvirt_nodes.h5",
+        "node_types_file": "$NETWORK_DIR/sonata/excvirt_node_types.csv"
+      },
+      {
+        "nodes_file": "$NETWORK_DIR/sonata/inhvirt_nodes.h5",
+        "node_types_file": "$NETWORK_DIR/sonata/inhvirt_node_types.csv"
+      }
+    ],
+    "edges": [
+      {
+        "edges_file": "$NETWORK_DIR/bglibpy/edges/excvirt_cortex.h5",
+        "edge_types_file": null
+      },
+      {
+        "edges_file": "$NETWORK_DIR/bglibpy/edges/inhvirt_cortex.h5",
+        "edge_types_file": null
+      }
+    ]
+  }
+}
