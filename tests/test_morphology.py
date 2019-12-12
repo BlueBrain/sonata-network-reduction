@@ -17,14 +17,19 @@ def test_morphology_children():
 
 
 def test_current_morphology():
-    soma = h.Section(name='soma')
-    dend1 = h.Section(name='dend1')
-    dend2 = h.Section(name='dend2')
+    soma = h.Section(name='cell[0].soma[0]')
+    dend1 = h.Section(name='cell[0].dend[0]')
+    dend2 = h.Section(name='cell[0].dend[1]')
     dend1.connect(soma)
     dend2.connect(soma)
 
-    m = morphology.CurrentNeuronMorphology()
-    assert [soma, dend1, dend2] == m.get_section_list()
+    h.define_shape()
+    m = morphology.NeuronMorphology(soma)
+    expected = {'axonal': [], 'basal': [dend1, dend2], 'somatic': [soma], 'apical': []}
+    assert expected == m.section_lists
     assert m.get_section_id(soma) == -1
     assert m.get_section_id(dend1) == 0
     assert m.get_section_id(dend2) == 1
+    assert m.get_section(-1) == soma
+    assert m.get_section(0) == dend1
+    assert m.get_section(1) == dend2

@@ -2,7 +2,7 @@
 import re
 
 
-def to_valid_nrn_name(var_name: str):
+def to_valid_nrn_name(var_name: str) -> str:
     """
     Args:
         var_name: variable name

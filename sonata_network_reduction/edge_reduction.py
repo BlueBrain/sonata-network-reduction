@@ -1,19 +1,20 @@
 """Module that is responsible for single node reduction."""
 from collections import OrderedDict
-from typing import List
+from typing import List, Tuple
 
 import pandas as pd
 from bglibpy import Cell, Synapse
+from bluepyopt.ephys.models import CellModel
 from bluepysnap import Circuit
 from neuron import h
 
-from sonata_network_reduction.morphology import CurrentNeuronMorphology
+from sonata_network_reduction.morphology import NeuronMorphology
 
 EDGES_INDEX_POPULATION = 'population'
 EDGES_INDEX_AFFERENT = 'afferent'
 
 
-def get_edges(sonata_circuit: Circuit, node_population_name: str, node_id: int):
+def get_edges(sonata_circuit: Circuit, node_population_name: str, node_id: int) -> pd.DataFrame:
     """Gets all edges for a given node
 
     Args:
@@ -41,18 +42,19 @@ def get_edges(sonata_circuit: Circuit, node_population_name: str, node_id: int):
         names=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT, 'idx'])
 
 
-def instantiate_edges_sonata(edges: pd.DataFrame):
+def instantiate_edges_sonata(edges: pd.DataFrame, ephys_cell: CellModel) -> List:
     """Deprecated for now. Instantiates edges in NEURON.
 
     Args:
         edges: edges Dataframe
+        ephys_cell: edges cell as ephys.CellModel
 
     Returns:
-        list of synapses corresponding to edges.
+        list of NEURON synapses corresponding to edges.
     """
     # pylint: disable=too-many-locals, import-outside-toplevel
     from bluepysnap.edges import DYNAMICS_PREFIX
-    morphology = CurrentNeuronMorphology()
+    morphology = NeuronMorphology(ephys_cell.icell)
     dynamics_cols_idx = edges.columns.str.startswith(DYNAMICS_PREFIX)
     synapses = []
     for i in range(len(edges.index)):
@@ -71,15 +73,15 @@ def instantiate_edges_sonata(edges: pd.DataFrame):
     return synapses
 
 
-def instantiate_edges_bglibpy(edges: pd.DataFrame, bglibpy_cell: Cell):
+def instantiate_edges_bglibpy(edges: pd.DataFrame, bglibpy_cell: Cell) -> Tuple[List, OrderedDict]:
     """Instantiates edges in NEURON.
 
     Args:
         edges: edges
-        bglibpy_cell: edges cell in BGLibPy
+        bglibpy_cell: edges cell as bglibpy.Cell
 
     Returns:
-        list of synapses and dict of netcons corresponding to edges.
+        Tuple of the synapses list and the netcons dict corresponding to edges.
     """
     synapses = []
     netcons_map = OrderedDict()
@@ -124,7 +126,7 @@ def instantiate_edges_bglibpy(edges: pd.DataFrame, bglibpy_cell: Cell):
 
 
 def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges: pd.DataFrame,
-                         morphology: CurrentNeuronMorphology):
+                         morphology: NeuronMorphology):
     """Update edges Dataframe inplace with new reduced properties.
 
     Args:

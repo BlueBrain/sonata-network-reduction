@@ -1,12 +1,17 @@
 """Module that is responsible for single node reduction."""
+import itertools
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Tuple, List, Dict
 
 from aibs_circuit_converter import convert_to_hoc
 from bglibpy import Cell, RNGSettings
 from bluepyopt.ephys import create_hoc, models
+from bluepyopt.ephys.locations import NrnSeclistLocation
+from bluepyopt.ephys.mechanisms import NrnMODMechanism
 from bluepyopt.ephys.morphologies import NrnFileMorphology
+from bluepyopt.ephys.parameters import NrnSectionParameter
 from bluepysnap import Circuit
 import pandas as pd
 import neuron_reduce
@@ -17,25 +22,67 @@ from neuron import h
 from sonata_network_reduction.edge_reduction import instantiate_edges_bglibpy, get_edges, \
     update_reduced_edges, EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT
 from sonata_network_reduction import utils
-from sonata_network_reduction.biophysics import get_mechanisms_and_params
-from sonata_network_reduction.morphology import CurrentNeuronMorphology
+from sonata_network_reduction.biophysics import get_seclist_nsegs, get_mechs_params
+from sonata_network_reduction.morphology import NeuronMorphology
 
 
-def _save_biophysics(
-        biophys_filepath: Path, morphology: CurrentNeuronMorphology, morphology_name: str):
+def _current_neuron_soma():
+    """Gets soma of currently instantiated neuron in NEURON.
+
+    Returns:
+        Soma. Throws an error if there are multiple neurons.
+    """
+    cells = h.SectionList()
+    cells.allroots()
+    cells = list(cells)
+    assert len(cells) == 1
+    return cells[0]
+
+
+def _to_bluepyopt_format(
+        mech_names: Dict[str, List],
+        uniform_params: Dict[str, Dict[str, float]]) \
+        -> Tuple[List[NrnMODMechanism], List[NrnSectionParameter]]:
+    mechs = []
+    params = []
+    for seclist_name in mech_names.keys():
+        loc = NrnSeclistLocation(seclist_name, seclist_name)
+        mechs += [NrnMODMechanism(mech_name, suffix=mech_name, locations=[loc])
+                  for mech_name in mech_names[seclist_name]]
+        params += [NrnSectionParameter(
+            param_name, param_value, True, param_name=param_name, locations=[loc])
+            for param_name, param_value in uniform_params[seclist_name].items()]
+    return mechs, params
+
+
+def _save_biophysics(biophys_filepath: Path, morphology: NeuronMorphology, morphology_name: str):
+    """Saves biophysics of morphology to a file
+
+    Args:
+        biophys_filepath: where to save file
+        morphology: to get biophysics from
+        morphology_name: name of morphology to store in biophysics file
+    """
     if biophys_filepath.is_file():
         return
-    mechanisms, parameters = get_mechanisms_and_params(morphology.get_section_list())
+    mech_names, uniform_params, nonuniform_params = get_mechs_params(morphology.section_lists)
+    mechs, uniform_params = _to_bluepyopt_format(mech_names, uniform_params)
+    nonuniform_param_names = set(itertools.chain(*nonuniform_params.values()))
     template_filepath = pkg_resources.resource_filename(
         __name__, 'templates/reduced_cell_template.jinja2')
     biophysics = create_hoc.create_hoc(
-        mechs=mechanisms,
-        parameters=parameters,
+        mechs=mechs,
+        parameters=uniform_params,
         morphology=morphology_name,
         replace_axon='',
         template_name=utils.to_valid_nrn_name(biophys_filepath.stem),
         template_filename=template_filepath,
         template_dir='',
+        custom_jinja_params={
+            'nsegs_map': get_seclist_nsegs(morphology.section_lists),
+            'nonuniform_params': nonuniform_params,
+            'nonuniform_param_names': nonuniform_param_names,
+        },
     )
 
     with biophys_filepath.open('w') as f:
@@ -43,11 +90,31 @@ def _save_biophysics(
 
 
 def _update_reduced_node(node_id: int, node: pd.Series):
-    node.at['morphology'] += '_{}_reduced'.format(node_id)
-    node.at['model_template'] += '_{}_reduced'.format(node_id)
+    """Updates node data with reduced properties.
+
+    Args:
+        node_id: node ID
+        node: pandas Series of single node data
+    """
+    node.at['morphology'] += '_{}'.format(node_id)
+    node.at['model_template'] += '_{}'.format(node_id)
 
 
-def _write_result_dir(node: pd.Series, edges: pd.DataFrame, node_id: int):
+def _write_result_dir(node: pd.Series, edges: pd.DataFrame, node_id: int) \
+        -> Tuple[Path, List[Path]]:
+    """Writes data of reduced node and edges to a temporary directory.
+
+    We can't update directly h5 files of node and edges because reduction happens in parallel.
+    Instead we save reduced h5 files to a temp directory so they can be picked up later.
+    Args:
+        node: reduced node data
+        edges: reduced edges data
+        node_id: node ID
+
+    Returns:
+        Tuple of path to reduced node file and list of paths to reduced edges files.
+    """
+
     def _create_tmp_path(name: str):
         tmp_file = NamedTemporaryFile(delete=False)
         tmp_path = Path(tmp_file.name)
@@ -71,7 +138,17 @@ def _write_result_dir(node: pd.Series, edges: pd.DataFrame, node_id: int):
     return node_path, edges_paths
 
 
-def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, sonata_circuit: Circuit):
+def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, sonata_circuit: Circuit) -> Cell:
+    """Instantiates bglibpy.Cell for node.
+
+    Args:
+        node_id: node ID
+        node: node data
+        sonata_circuit: sonata circuit
+
+    Returns:
+        instance of bglibpy.Cell
+    """
     biophys_filepath = _get_biophys_filepath(node, sonata_circuit)
     morphology_filepath = _get_morphology_filepath(node, sonata_circuit)
     return Cell(
@@ -85,7 +162,8 @@ def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, sonata_circuit: Cir
     )
 
 
-def _instantiate_cell_sonata(node_id: int, node: pd.Series, sonata_circuit: Circuit):
+def _instantiate_cell_sonata(node_id: int, node: pd.Series, sonata_circuit: Circuit) \
+        -> models.CellModel:
     """Deprecated for now. Instantiates node in NEURON with `ephys` module."""
 
     class _HocCellModel(models.HocCellModel):
@@ -131,7 +209,16 @@ def _instantiate_cell_sonata(node_id: int, node: pd.Series, sonata_circuit: Circ
     return ephys_cell
 
 
-def _get_biophys_filepath(node, sonata_circuit):
+def _get_biophys_filepath(node: pd.Series, sonata_circuit: Circuit) -> Path:
+    """Gets filepath to node's biophysics file
+
+    Args:
+        node: node data
+        sonata_circuit: sonata circuit
+
+    Returns:
+        Filepath
+    """
     extension, name = node['model_template'].split(':')
     return Path(
         sonata_circuit.config['components']['biophysical_neuron_models_dir'],
@@ -139,14 +226,28 @@ def _get_biophys_filepath(node, sonata_circuit):
     )
 
 
-def _get_morphology_filepath(node, sonata_circuit):
+def _get_morphology_filepath(node: pd.Series, sonata_circuit: Circuit) -> Path:
+    """Gets filepath to node's morphology file
+
+    Args:
+        node: node data
+        sonata_circuit: sonata circuit
+
+    Returns:
+        Filepath
+    """
     return Path(
         sonata_circuit.config['components']['morphologies_dir'],
         node['morphology'] + '.swc'
     )
 
 
-def reduce_node(node_id: int, sonata_circuit: Circuit, node_population_name: str, **reduce_kwargs):
+def reduce_node(
+        node_id: int,
+        sonata_circuit: Circuit,
+        node_population_name: str,
+        **reduce_kwargs) \
+        -> Tuple[Path, List[Path]]:
     """Reduces single node.
 
     Reduced morphology and biophysics are written inplace in corresponding sonata circuit.
@@ -160,10 +261,9 @@ def reduce_node(node_id: int, sonata_circuit: Circuit, node_population_name: str
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
 
     Returns:
-        Tuple of 1. filepath to temporary .json file with new node properties,
-        2. list of filepaths to temporary .json files with new edge properties.
+        Tuple of 1. filepath to temporary .json file with reduced node properties,
+        2. list of filepaths to temporary .json files with reduced edge properties.
     """
-    # pylint: disable=too-many-locals
     node = sonata_circuit.nodes[node_population_name].get(node_id)
     bglibpy_cell = _instantiate_cell_bglibpy(node_id, node, sonata_circuit)
     edges = get_edges(sonata_circuit, node_population_name, node_id)
@@ -176,7 +276,7 @@ def reduce_node(node_id: int, sonata_circuit: Circuit, node_population_name: str
             **reduce_kwargs, )
     # 3D is lost after reduction, we need to restore it with h.define_shape()
     h.define_shape()
-    morphology = CurrentNeuronMorphology()
+    morphology = NeuronMorphology(_current_neuron_soma())
     update_reduced_edges(reduced_netcons, netcons_map, edges, morphology)
 
     _update_reduced_node(node_id, node)

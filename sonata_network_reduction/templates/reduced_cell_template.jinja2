@@ -113,6 +113,9 @@ proc init(/* args: morphology_dir, morphology_name */) {
   {%- endif %}
   insertChannel()
   biophys()
+{% if nonuniform_params %}
+  nonuniform_biophys()
+{%- endif %}
 
   // Initialize channel_seed_set to avoid accidents
   channel_seed_set = 0
@@ -191,6 +194,20 @@ proc distribute_distance(){local x localobj sl
 
 proc geom_nseg() {
   this.geom_nsec() //To count all sections
+  save_reduced_nseg()
+}
+
+proc save_reduced_nseg() {local i localobj nsegs
+  {%- for location, nsegs in nsegs_map.items() %}
+  nsegs = new Vector({{nsegs|count}})
+  nsegs.insrt(0, {{nsegs|join(',')}})
+  i = 0
+  forsec this.{{location}} {
+    nseg = nsegs.x[i]
+    i = i + 1
+  }
+  nsegs.resize(0)
+  {%- endfor %}
 }
 
 proc insertChannel() {
@@ -215,6 +232,27 @@ proc biophys() {
   distribute_distance(CellRef.{{location}}, "{{param_name}}", "{{value}}")
   {%- endfor %}
 }
+
+{% if nonuniform_params -%}
+proc nonuniform_biophys() {local i localobj {{ nonuniform_param_names|join('_vals, ') }}_vals
+{% for param_name in nonuniform_param_names %}
+  {{param_name}}_vals = new Vector()
+{%- endfor %}
+{% for seclist_name, params in nonuniform_params.items() %}
+  i = 0
+{% for param_name, values in params.items() %}
+  {{param_name}}_vals.resize(0) {{param_name}}_vals.insrt(0,{{values|join(',')}})
+{%- endfor %}
+
+  forsec {{seclist_name}} for(x, 0) {
+  {% for param_name, values in params.items() %}
+    {{param_name}}(x)={{param_name}}_vals.x[i]
+  {%- endfor %}
+    i = i + 1
+  }
+{%- endfor %}
+}
+{%- endif %}
 
 func sec_count(/* SectionList */) { local nSec
   nSec = 0

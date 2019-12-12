@@ -16,7 +16,15 @@ from bluepysnap.nodes import DYNAMICS_PREFIX as NODES_DYNAMICS_PREFIX, NodePopul
 from sonata_network_reduction.node_reduction import reduce_node
 
 
-def _get_biophys_node_ids(population: NodePopulation):
+def _get_biophys_node_ids(population: NodePopulation) -> List:
+    """Gets ids of biophysics nodes.
+
+    Args:
+        population: node population
+
+    Returns:
+        List of node ids that have biophysics
+    """
     node_ids = []
     for node_id in population.ids():
         node = population.get(node_id)
