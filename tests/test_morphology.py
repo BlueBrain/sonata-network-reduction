@@ -27,9 +27,9 @@ def test_current_morphology():
     m = morphology.NeuronMorphology(soma)
     expected = {'axonal': [], 'basal': [dend1, dend2], 'somatic': [soma], 'apical': []}
     assert expected == m.section_lists
-    assert m.get_section_id(soma) == -1
-    assert m.get_section_id(dend1) == 0
-    assert m.get_section_id(dend2) == 1
-    assert m.get_section(-1) == soma
-    assert m.get_section(0) == dend1
-    assert m.get_section(1) == dend2
+    assert m.get_section_id(soma) == 0
+    assert m.get_section_id(dend1) == 1
+    assert m.get_section_id(dend2) == 2
+    assert m.get_section(0) == soma
+    assert m.get_section(1) == dend1
+    assert m.get_section(2) == dend2

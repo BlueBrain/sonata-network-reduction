@@ -121,7 +121,10 @@ class NeuronMorphology:
                 ),
                 _section_type(h_section))
             self._put_section(h_section, section.id)
-            self._create_neurite(section, h_section)
+            if section.type != SectionType.axon:
+                # don't count the rest of Axon in section ids because Neurodamus expects only a
+                # single section axons.
+                self._create_neurite(section, h_section)
 
     def _put_section(self, hsection: h.Section, section_id: int):
         """Stores section with its ID for later access.
@@ -130,6 +133,8 @@ class NeuronMorphology:
             hsection: section instance in NEURON
             section_id: section ID
         """
+        # increase on 1 because MorphIO starts count from -1 but BGLibPy from 0
+        section_id += 1
         self._id_to_hsection[section_id] = hsection
         self._hsection_to_id[hsection] = section_id
         seclist_name, idx = _extract_sec_name_parts(hsection.name())

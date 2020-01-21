@@ -125,6 +125,27 @@ def instantiate_edges_bglibpy(edges: pd.DataFrame, bglibpy_cell: Cell) -> Tuple[
     return synapses, netcons_map
 
 
+def _get_segment_id_and_offset(hsection: h.Section, x: float) -> Tuple[int, float]:
+    """Calculates section location's corresponding segment id and offset
+
+    Args:
+        hsection: NEURON section
+        x: NEURON location as a fraction between 0 and 1.
+
+    Returns:
+        Segment ID and offset
+    """
+    section_len = x * hsection.L
+    id_ = 0
+    offset = 0
+    for i in range(hsection.n3d()):
+        if hsection.arc3d(i) > section_len:
+            id_ = max(i - 1, id_)
+            offset = section_len - hsection.arc3d(id_)
+            break
+    return id_, offset
+
+
 def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges: pd.DataFrame,
                          morphology: NeuronMorphology):
     """Update edges Dataframe inplace with new reduced properties.
@@ -145,13 +166,13 @@ def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges:
             syn = reduced_netcon.pre()
         seg = syn.get_segment()
         sec = seg.sec
-        segments = list(sec)
-        ipt = segments.index(seg) + 1
-        # half_seg_len = h.distance(sec(0), sec(1. / len(segments) * .5))
+        segment_id, segment_offset = _get_segment_id_and_offset(sec, seg.x)
         sec_id = morphology.get_section_id(sec)
         edges.at[edge_index,
                  'morpho_section_id_post' if is_afferent else 'morpho_section_id_pre'] = sec_id
         edges.at[edge_index,
-                 'morpho_segment_id_post' if is_afferent else 'morpho_segment_id_pre'] = ipt
+                 'afferent_section_pos' if is_afferent else 'efferent_section_pos'] = seg.x
         edges.at[edge_index,
-                 'morpho_offset_segment_post' if is_afferent else 'morpho_offset_segment_pre'] = 0
+                 'morpho_segment_id_post' if is_afferent else 'morpho_segment_id_pre'] = segment_id
+        column = 'morpho_offset_segment_post' if is_afferent else 'morpho_offset_segment_pre'
+        edges.at[edge_index, column] = segment_offset
