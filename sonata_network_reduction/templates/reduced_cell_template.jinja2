@@ -193,8 +193,8 @@ proc distribute_distance(){local x localobj sl
 }
 
 proc geom_nseg() {
-  this.geom_nsec() //To count all sections
   save_reduced_nseg()
+  this.geom_nsec() //To count all sections
 }
 
 proc save_reduced_nseg() {local i localobj nsegs

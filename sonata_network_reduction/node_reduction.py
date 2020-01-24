@@ -236,10 +236,11 @@ def _get_morphology_filepath(node: pd.Series, sonata_circuit: Circuit) -> Path:
     Returns:
         Filepath
     """
-    return Path(
-        sonata_circuit.config['components']['morphologies_dir'],
-        node['morphology'] + '.swc'
-    )
+    morph_dir = Path(sonata_circuit.config['components']['morphologies_dir'])
+    if morph_dir.joinpath('ascii').is_dir():
+        return morph_dir.joinpath('ascii', node['morphology'] + '.asc')
+    else:
+        return morph_dir.joinpath(node['morphology'] + '.swc')
 
 
 def reduce_node(
