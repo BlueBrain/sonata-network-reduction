@@ -13,7 +13,6 @@ import pandas as pd
 from bluepysnap.circuit import Circuit
 from bluepysnap.edges import DYNAMICS_PREFIX as EDGES_DYNAMICS_PREFIX
 from bluepysnap.nodes import DYNAMICS_PREFIX as NODES_DYNAMICS_PREFIX, NodePopulation
-from sonata_network_reduction.node_reduction import reduce_node
 
 
 def _get_biophys_node_ids(population: NodePopulation) -> List:
@@ -112,6 +111,10 @@ def reduce_population(population: NodePopulation, sonata_circuit: Circuit, **red
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
     """
+    # This is required by `tox -e docs`. It scans sources for documentation building and eventually
+    # tries to import `neuron` and fails on that.
+    # pylint: disable=import-outside-toplevel
+    from sonata_network_reduction.node_reduction import reduce_node
     try:
         ids = _get_biophys_node_ids(population)
     except RuntimeError:
