@@ -3,6 +3,30 @@ Sonata Network Reduction
 Project that allows to apply `neuron_reduce <https://github.com/orena1/neuron_reduce>`__ algorithm to
 a `Sonata network <https://github.com/AllenInstitute/sonata>`__.
 
+Docker
+------------
+
+The project can be used via docker container. To prepare one please do in the project's root:
+
+.. code:: bash
+
+    make docker_build_latest
+
+Further you can use a make target again but be sure to check mount points of it:
+
+.. code:: bash
+
+    make docker_run_dev
+
+Or do it manually:
+
+.. code:: bash
+
+    docker run -v $HOME:/home/your_mounted_home -it sonata-reduction /bin/bash
+
+After you should end up in `/opt/sonata-reduction` of the docker container. Here you should be
+able to run a shell command (see example below).
+
 Installation
 ------------
 
@@ -19,16 +43,20 @@ Usage
 .. code:: python
 
     from sonata_network_reduction.network_reduction import reduce_network
-    from sonata_network_reduction.sonata_api import SonataApi
 
-    sonata_api = SonataApi('/circuit_config_filepath.json', '/simulation_config_filepath.json')
-    reduce_network(sonata_api, '/reduced_network_dir')
+    reduce_network('/circuit_config_filepath.json', '/reduced_network_dir', reduction_frequency=0)
 
 **Shell**
 
 .. code:: bash
 
-    sonata-network-reduction /circuit_config_filepath.json /simulation_config_filepath.json /reduced_network_dir
+    sonata-network-reduction /circuit_config_filepath.json /reduced_network_dir
+
+You can use any of **neuron_reduce** arguments.
+
+.. code:: bash
+
+    sonata-network-reduction /circuit_config_filepath.json /reduced_network_dir --reduction-frequency 0.5 --total_segments_manual 0.1
 
 As the result ``/reduced_network_dir`` must contain the copy of ``sonata_api``'s sonata network
 where all 'biophysical' neurons are replaced with their reduced versions. That means their
