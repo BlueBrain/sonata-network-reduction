@@ -54,6 +54,7 @@ docker_build_latest: python_build | install_neurodamus
 		--build-arg=neurodamus_hoc_dir=$(NEURODAMUS_HOC_DIR) \
 		--build-arg=python_dist_dir=dist \
 		.
+	@printf '\n\e[1mThe generated docker container is for HIPPOCAMPUS circuits only.\e[0m\n'
 
 docker_run_dev:
 	docker run \

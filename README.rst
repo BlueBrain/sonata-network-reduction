@@ -26,6 +26,9 @@ Or do it manually:
 
 After you should end up in `/opt/sonata-reduction` of the docker container. Here you should be
 able to run a shell command (see example below).
+**IMPORTANT!** This docker container can be used only with Hippocampus circuits. Please contact
+`NSE <https://bbpteam.epfl.ch/project/issues/browse/NSETM>`__ if you need it for another type of
+circuit.
 
 Installation
 ------------
