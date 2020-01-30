@@ -1,5 +1,6 @@
 graft tests
 
+include sonata_network_reduction/templates/reduced_cell_template.jinja2
 global-exclude *.py[co] .DS_Store
 prune venv
 prune .tox
