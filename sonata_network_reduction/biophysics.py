@@ -55,8 +55,12 @@ def _get_sec_mechs_params(sec: h.Section) -> Tuple[List[str], Dict[str, float]]:
     params = {'cm': sec.cm, 'Ra': sec.Ra}
     first_seg = next(iter(sec))
     for mech in first_seg:
-        if not mech.is_ion():
-            mech_name = mech.name()
+        mech_name = mech.name()
+        if mech.is_ion() and mech_name.endswith('_ion'):
+            # take only reverse potential from ions mechanisms
+            erev_name = 'e' + mech_name.split('_ion')[0]
+            params[erev_name] = getattr(mech, erev_name)
+        else:
             mech_names.append(mech_name)
             nmodl_param_names = _get_nmodl_param_names(mech_name)
             for param_name in nmodl_param_names:
