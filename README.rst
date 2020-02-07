@@ -6,11 +6,16 @@ a `Sonata network <https://github.com/AllenInstitute/sonata>`__.
 Docker
 ------------
 
-The project can be used via docker container. To prepare one please do in the project's root:
+The project can be used via docker container. There 2 containers now:
+
+- A general container for any circuit, `make docker_build_general`.
+- A container with precompiled mods for Hippocampus circuits, `make docker_build_hippo`.
+
+To prepare one please do in the project's root:
 
 .. code:: bash
 
-    make docker_build_latest
+    make docker_build_general
 
 Further you can use a make target again but be sure to check mount points of it:
 
@@ -22,13 +27,24 @@ Or do it manually:
 
 .. code:: bash
 
-    docker run -v $HOME:/home/your_mounted_home -it sonata-reduction /bin/bash
+    docker run -v $HOME:/home/your_mounted_home -it sonata-reduction:<put version here> /bin/bash
 
-After you should end up in `/opt/sonata-reduction` of the docker container. Here you should be
-able to run a shell command (see example below).
-**IMPORTANT!** This docker container can be used only with Hippocampus circuits. Please contact
-`NSE <https://bbpteam.epfl.ch/project/issues/browse/NSETM>`__ if you need it for another type of
-circuit.
+After you should end up in `/home/sonata-reduction` of the docker container. Here you should be
+able to run a shell command (see example below). **Don't forget that for a general container,
+you must compile your mods before doing reduction.** Also please don't forget that they must be
+compiled with a relative path. For example, you mount mods directory:
+
+.. code:: bash
+
+    docker run -v $HOME/mods:/mods -it sonata-reduction:<put version here> /bin/bash
+
+Mods files now are in `/mods`. From `/home/sonata-reduction` you need to:
+
+.. code:: bash
+
+    nrnivmodl ../../mods
+
+After that you should be able to run reduction with your mods from `/home/sonata-reduction`.
 
 Installation
 ------------

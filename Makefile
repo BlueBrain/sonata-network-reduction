@@ -1,6 +1,6 @@
 .PHONY: docker_build_version docker_build_latest help
 
-VERSION?=$(shell cat sonata_network_reduction/version.py)
+VERSION?=$(shell grep -Po 'VERSION = "\K.*?(?=")' sonata_network_reduction/version.py)
 
 VENV_DIR:=venv
 TMP_DIR:=.tmp
@@ -13,8 +13,8 @@ Makefile usage
   Targets:
     install_neurodamus            Helper target for docker targets.
     python_build                  Build the python package.
-    docker_build_version          Build local docker image with the version tag.
-    docker_build_latest           Build local docker image with the latest tag.
+    docker_build_general          Build local docker image for any circuit.
+    docker_build_hippo            Build local docker image for a hippocampus circuit.
     docker_run_dev                Run a built docker. Please consider its mount points before usage.
     clean                         Clear tox supplementary files
     toxbinlinks                   Creates links for bin files in tox
@@ -24,18 +24,23 @@ export HELPTEXT
 help:
 	@echo "$$HELPTEXT"
 
+version:
+	echo $(VERSION)
+
 $(VENV_DIR):
 	python3 -mvenv $(VENV_DIR)
 
-install_neurodamus:
 # NEURODAMUS. Clone its repo and copy its hoc files to NEURODAMUS_HOC_DIR
+install_neurodamus:
 	mkdir -p $(NEURODAMUS_HOC_DIR)
 	rm -rf $(TMP_DIR)/neurodamus
 	sh .install_neurodamus.sh $(TMP_DIR)/neurodamus
 	yes | cp -Lu $(TMP_DIR)/neurodamus/neurodamus-core/hoc/*.hoc $(NEURODAMUS_HOC_DIR)
 	rm -rf $(TMP_DIR)/neurodamus
+
 # HIPPOCAMPUS. Clone its repo and copy hoc files to NEURODAMUS_HOC_DIR, mod files to
 # HIPPOCAMPUS_MOD_DIR
+install_hippocampus: install_neurodamus
 	mkdir -p $(HIPPOCAMPUS_MOD_DIR)
 	rm -rf $(TMP_DIR)/hippocampus
 	git clone --recurse-submodules $(HIPPOCAMPUS_REPO) $(TMP_DIR)/hippocampus
@@ -48,8 +53,14 @@ install_neurodamus:
 python_build: | $(VENV_DIR)
 	$(VENV_DIR)/bin/python setup.py sdist
 
-docker_build_latest: python_build | install_neurodamus
-	docker build -t sonata-reduction:latest \
+docker_build_general: python_build | install_neurodamus
+	docker build -t sonata-reduction:$(VERSION) \
+		--build-arg=neurodamus_hoc_dir=$(NEURODAMUS_HOC_DIR) \
+		--build-arg=python_dist_dir=dist \
+		.
+
+docker_build_hippo: python_build | install_hippocampus
+	docker build -t sonata-reduction:$(VERSION) \
 		--build-arg=mods_dir=$(HIPPOCAMPUS_MOD_DIR) \
 		--build-arg=neurodamus_hoc_dir=$(NEURODAMUS_HOC_DIR) \
 		--build-arg=python_dist_dir=dist \
