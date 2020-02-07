@@ -323,4 +323,4 @@ proc re_init_rng() {localobj sf
 }
 
 
-endtemplate Cell_473863510_cell
+endtemplate Cell_473863510

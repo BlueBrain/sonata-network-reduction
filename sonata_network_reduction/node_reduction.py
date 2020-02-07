@@ -23,7 +23,7 @@ from sonata_network_reduction.edge_reduction import instantiate_edges_bglibpy, g
     update_reduced_edges, EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT
 from sonata_network_reduction import utils
 from sonata_network_reduction.biophysics import get_seclist_nsegs, get_mechs_params
-from sonata_network_reduction.morphology import NeuronMorphology
+from sonata_network_reduction.morphology import NeuronMorphology, copy_soma
 
 
 def _current_neuron_soma():
@@ -278,6 +278,9 @@ def reduce_node(
     # 3D is lost after reduction, we need to restore it with h.define_shape()
     h.define_shape()
     morphology = NeuronMorphology(_current_neuron_soma())
+    # we copy the original soma because NEURON skews soma upon loading. If we don't transfer the
+    # original, the skewed version of the original will be saved.
+    copy_soma(morphology.morph, str(_get_morphology_filepath(node, sonata_circuit)))
     update_reduced_edges(reduced_netcons, netcons_map, edges, morphology)
 
     _update_reduced_node(node_id, node)

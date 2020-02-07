@@ -1,9 +1,10 @@
 """Module that recreates morphology of currently instantiated neuron in NEURON simulator."""
 import re
 from typing import Tuple, List, Iterable
+import numpy as np
 
 from aibs_circuit_converter.convert_to_hoc import LOCATION_MAP
-from morphio.mut import Morphology, Soma, Section
+from morphio.mut import Morphology, Section
 from morphio import SectionType, PointLevel
 from neuron import h
 from sonata_network_reduction.exceptions import SonataReductionError
@@ -28,17 +29,16 @@ def _extract_sec_name_parts(sec_name: str) -> Tuple[str, int]:
     return seclist_name, sec_index
 
 
-def _fix_soma_point_cylinder(morph_soma: Soma, soma_sections: List):
-    """Changes inplace ``morph_soma`` from cylinder to point if it has 1 nseg.
+def copy_soma(morph_to: Morphology, morph_file_from: str):
+    """Copies soma from morphology under ``morph_from`` to ``morph_to``.
 
     Args:
-        morph_soma: MorphIO soma instance
-        soma_sections: list of soma sections in NEURON
+        morph_to: instance of Morphology where to copy soma
+        morph_file_from: a path to a morphology file where from copy soma
     """
-    is_single_nseg_soma = (len(soma_sections) == 1) and (len(list(soma_sections[0])) == 1)
-    if is_single_nseg_soma and len(morph_soma.points) == 3:
-        morph_soma.points = [morph_soma.points[1]]
-        morph_soma.diameters = [morph_soma.diameters[1]]
+    morph_from = Morphology(morph_file_from)
+    morph_to.soma.points = np.copy(morph_from.soma.points)
+    morph_to.soma.diameters = np.copy(morph_from.soma.diameters)
 
 
 def _section_points(h_section: h.Section) -> List[List]:
@@ -109,12 +109,11 @@ class NeuronMorphology:
         soma_children = _neuron_order(_h_children(soma))
         while _section_type(soma_children[0]) == SectionType.soma:
             soma_sections.append(soma_children.pop(0))
-        self._morph = Morphology()
-        self._morph.soma.points = sum([_section_points(sec) for sec in soma_sections], [])
-        self._morph.soma.diameters = sum([_section_diameters(sec) for sec in soma_sections], [])
-        _fix_soma_point_cylinder(self._morph.soma, soma_sections)
+        self.morph = Morphology()
+        self.morph.soma.points = sum([_section_points(sec) for sec in soma_sections], [])
+        self.morph.soma.diameters = sum([_section_diameters(sec) for sec in soma_sections], [])
         for h_section in soma_children:
-            section = self._morph.append_root_section(
+            section = self.morph.append_root_section(
                 PointLevel(
                     _section_points(h_section),
                     _section_diameters(h_section)
@@ -172,7 +171,7 @@ class NeuronMorphology:
         Args:
             filepath: file
         """
-        self._morph.write(filepath)
+        self.morph.write(filepath)
 
     def _create_neurite(self, section: Section, h_section: h.Section):
         """Iterates over section in NEURON and creates its corresponding morphology.
