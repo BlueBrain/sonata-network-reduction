@@ -32,7 +32,7 @@ setup(
         'tqdm>=4.34',
         'bluepyopt>=1.8.68',
         'bglibpy>=4.2',
-        'bluepysnap==0.1.2',
+        'bluepysnap==0.2.0',
         'neuron_reduce @ git+https://git@github.com/orena1/neuron_reduce.git@master#egg=neuron_reduce',
         'morphio==2.3.4',
         'click>=6.7',

@@ -102,12 +102,12 @@ def _overwrite_edges(edges_path_list: List[Path], sonata_circuit: Circuit):
         edges_path.unlink()
 
 
-def reduce_population(population: NodePopulation, sonata_circuit: Circuit, **reduce_kwargs):
+def reduce_population(population: NodePopulation, circuit_config_file: Path, **reduce_kwargs):
     """ Reduces node population.
 
     Args:
         population: node population
-        sonata_circuit: sonata circuit
+        circuit_config_file: reduced sonata circuit config filepath
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
     """
@@ -127,34 +127,35 @@ def reduce_population(population: NodePopulation, sonata_circuit: Circuit, **red
     with Pool(maxtasksperchild=1) as pool:
         reduce_node_results = pool.map(partial(
             reduce_node,
-            sonata_circuit=sonata_circuit,
+            circuit_config_file=circuit_config_file,
             node_population_name=population.name,
             **reduce_kwargs),
             ids)
 
+    circuit = Circuit(str(circuit_config_file))
     node_list, edges_list = zip(*reduce_node_results)
-    _overwrite_nodes(node_list, population.name, sonata_circuit)
-    _overwrite_edges(edges_list, sonata_circuit)
+    _overwrite_nodes(node_list, population.name, circuit)
+    _overwrite_edges(edges_list, circuit)
 
 
-def reduce_network(circuit_config_filepath: str, out_circuit_dirpath: str, **reduce_kwargs):
+def reduce_network(circuit_config_file: Path, reduced_circuit_dir: Path, **reduce_kwargs):
     """ Reduces the network represented by ``circuit_config_filepath`` param.
 
-    The reduced network is saved to ``out_circuit_dirpath``.
+    Assumed that the circuit is represented by the parent directory of ``circuit_config_filepath``.
+    The reduced network is saved to ``out_circuit_dir``.
 
     Args:
-        circuit_config_filepath: path to Sonata circuit config file
-        out_circuit_dirpath: path to a directory where to save the reduced.
+        circuit_config_file: path to Sonata circuit config file
+        reduced_circuit_dir: path to a directory where to save the reduced.
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
     """
-    out_circuit_dirpath = Path(out_circuit_dirpath)
-    circuit_config_filepath = Path(circuit_config_filepath)
-    if out_circuit_dirpath.exists() and any(out_circuit_dirpath.iterdir()):
-        raise ValueError('{} is not empty. It must be empty.'.format(out_circuit_dirpath))
-    out_circuit_dirpath.mkdir(exist_ok=True)
-    copy_tree(str(circuit_config_filepath.parent), str(out_circuit_dirpath))
+    if reduced_circuit_dir.exists() and any(reduced_circuit_dir.iterdir()):
+        raise ValueError('{} is not empty. It must be empty.'.format(reduced_circuit_dir))
+    reduced_circuit_dir.mkdir(exist_ok=True)
+    copy_tree(str(circuit_config_file.parent), str(reduced_circuit_dir))
 
-    sonata_circuit = Circuit(out_circuit_dirpath.joinpath(circuit_config_filepath.name))
-    for population in sonata_circuit.nodes.values():
-        reduce_population(population, sonata_circuit, **reduce_kwargs)
+    original_circuit = Circuit(str(circuit_config_file))
+    reduced_circuit_config_file = reduced_circuit_dir / circuit_config_file.name
+    for population in original_circuit.nodes.values():
+        reduce_population(population, reduced_circuit_config_file, **reduce_kwargs)

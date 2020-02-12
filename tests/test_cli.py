@@ -5,9 +5,9 @@ from click.testing import CliRunner
 
 from sonata_network_reduction.cli import cli
 
-current_dirpath = Path(__file__).resolve().parent
-circuit_dirpath = current_dirpath / 'data' / '9cells'
-circuit_filepath = circuit_dirpath / 'bglibpy_circuit_config.json'
+current_dir = Path(__file__).resolve().parent
+circuit_dir = current_dir / 'data' / '9cells'
+circuit_config_file = circuit_dir / 'bglibpy_circuit_config.json'
 
 
 def test_cli_default():
@@ -15,11 +15,11 @@ def test_cli_default():
         with patch('sonata_network_reduction.cli.reduce_network') as reduce_network_mock:
             reduce_network_mock.return_value = 0
             runner = CliRunner()
-            result = runner.invoke(cli, [str(circuit_filepath), tmpdirname])
+            result = runner.invoke(cli, [str(circuit_config_file), tmpdirname])
             assert reduce_network_mock.call_count == 1
             assert result.exit_code == 0
             args = reduce_network_mock.call_args[0]
-            assert args == (str(circuit_filepath), tmpdirname)
+            assert args == (Path(circuit_config_file), Path(tmpdirname))
             kwargs = reduce_network_mock.call_args[1]
             assert kwargs == {
                 'reduction_frequency': 0,
@@ -34,7 +34,7 @@ def test_cli_convert():
             reduce_network_mock.return_value = 0
             runner = CliRunner()
             runner.invoke(cli, [
-                str(circuit_filepath), tmpdirname,
+                str(circuit_config_file), tmpdirname,
                 '--reduction_frequency', '0.5',
                 '--total_segments_manual', '10',
                 '--return_seg_to_seg', 'True',

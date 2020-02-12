@@ -245,7 +245,7 @@ def _get_morphology_filepath(node: pd.Series, sonata_circuit: Circuit) -> Path:
 
 def reduce_node(
         node_id: int,
-        sonata_circuit: Circuit,
+        circuit_config_file: Path,
         node_population_name: str,
         **reduce_kwargs) \
         -> Tuple[Path, List[Path]]:
@@ -256,7 +256,7 @@ def reduce_node(
 
     Args:
         node_id: node id
-        sonata_circuit: sonata circuit
+        circuit_config_file: reduced sonata circuit config filepath
         node_population_name: node population name
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
@@ -265,9 +265,10 @@ def reduce_node(
         Tuple of 1. filepath to temporary .json file with reduced node properties,
         2. list of filepaths to temporary .json files with reduced edge properties.
     """
-    node = sonata_circuit.nodes[node_population_name].get(node_id)
-    bglibpy_cell = _instantiate_cell_bglibpy(node_id, node, sonata_circuit)
-    edges = get_edges(sonata_circuit, node_population_name, node_id)
+    circuit = Circuit(str(circuit_config_file))
+    node = circuit.nodes[node_population_name].get(node_id)
+    bglibpy_cell = _instantiate_cell_bglibpy(node_id, node, circuit)
+    edges = get_edges(circuit, node_population_name, node_id)
     synapses, netcons_map = instantiate_edges_bglibpy(edges, bglibpy_cell)
     _, _, reduced_netcons = \
         neuron_reduce.subtree_reductor(
@@ -280,12 +281,12 @@ def reduce_node(
     morphology = NeuronMorphology(_current_neuron_soma())
     # we copy the original soma because NEURON skews soma upon loading. If we don't transfer the
     # original, the skewed version of the original will be saved.
-    copy_soma(morphology.morph, str(_get_morphology_filepath(node, sonata_circuit)))
+    copy_soma(morphology.morph, str(_get_morphology_filepath(node, circuit)))
     update_reduced_edges(reduced_netcons, netcons_map, edges, morphology)
 
     _update_reduced_node(node_id, node)
-    morphology_filepath = _get_morphology_filepath(node, sonata_circuit)
-    biophys_filepath = _get_biophys_filepath(node, sonata_circuit)
+    morphology_filepath = _get_morphology_filepath(node, circuit)
+    biophys_filepath = _get_biophys_filepath(node, circuit)
     morphology.save(str(morphology_filepath))
     _save_biophysics(biophys_filepath, morphology, morphology_filepath.name)
 

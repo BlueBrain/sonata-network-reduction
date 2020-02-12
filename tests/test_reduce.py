@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import neurom
-from bluepysnap import Circuit
+from bluepysnap import Circuit, Config
 from neuron import h
 
 from sonata_network_reduction.network_reduction import reduce_network
@@ -27,14 +27,14 @@ def _get_node_section_map(node_population_name, sonata_circuit):
 
 
 def test_reduce_network(circuit_9cells):
-    circuit_path, circuit_config_path, circuit = circuit_9cells
+    _, circuit_config_path, circuit = circuit_9cells
     node_population_name = 'cortex'
     original_node_sections = _get_node_section_map(node_population_name, circuit)
 
     with compile_circuit_mod_files(circuit), tempfile.TemporaryDirectory() as out_dirpath:
         out_dirpath = Path(out_dirpath)
 
-        reduce_network(circuit_config_path, str(out_dirpath), reduction_frequency=0)
+        reduce_network(circuit_config_path, out_dirpath, reduction_frequency=0)
         reduced_sonata_circuit = Circuit(str(out_dirpath / circuit_config_path.name))
         reduced_node_sections = _get_node_section_map(node_population_name, reduced_sonata_circuit)
         for node_id, sections_num in original_node_sections.items():
@@ -65,9 +65,10 @@ def test_save_morphology(subtree_reductor_mock, circuit_9cells):
     circuit_path, circuit_config_path, circuit = circuit_9cells
     with compile_circuit_mod_files(circuit), tempfile.TemporaryDirectory() as tmp_dirpath:
         copy_tree(str(circuit_path), tmp_dirpath)
-        circuit_copy = Circuit(str(Path(tmp_dirpath) / circuit_config_path.name))
-        reduce_node(0, circuit_copy, 'cortex', reduction_frequency=0)
-        morph_dirpath = Path(circuit_copy.config['components']['morphologies_dir'])
+        circuit_copy_config_file = Path(tmp_dirpath) / circuit_config_path.name
+        reduce_node(0, circuit_copy_config_file, 'cortex', reduction_frequency=0)
+        circuit_copy_config = Config(circuit_copy_config_file).resolve()
+        morph_dirpath = Path(circuit_copy_config['components']['morphologies_dir'])
         morph_file = morph_dirpath / 'Scnn1a_473845048_m.swc'
         reduced_morph_file = morph_dirpath / 'Scnn1a_473845048_m_0.swc'
         assert reduced_morph_file.is_file()
