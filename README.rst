@@ -81,6 +81,24 @@ As the result ``/reduced_network_dir`` must contain the copy of ``sonata_api``'s
 where all 'biophysical' neurons are replaced with their reduced versions. That means their
 morphologies are reduced and their edges are updated with new sections ids and positions.
 
+**BB5**
+There is a corresponding module for using this project on BB5. Please type:
+
+.. code:: bash
+
+    module load neurodamus-<circuit>/<version>
+    module load py-sonata-network-reduction/<version>
+
+The first command loads necessary Neuron files for the type of circuit you want to reduce. The
+second command loads this project's module. After that you have ``sonata-network-reduction``
+in your shell. Please refer to the above **Shell** section for its details.
+A concrete example for hippocampus circuits:
+
+.. code:: bash
+
+    module load neurodamus-hippocampus/0.4
+    module load py-sonata-network-reduction/0.0.1
+
 Notes
 -----
 - Your python must be enabled with NEURON simulator. For that please read documentation on
