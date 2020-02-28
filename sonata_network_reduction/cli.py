@@ -2,44 +2,63 @@
 from pathlib import Path
 import click
 
-from sonata_network_reduction import reduce_network
+from sonata_network_reduction.network_reduction import reduce_network
+from sonata_network_reduction.node_reduction import _reduce_node_same_process
 
 
-def _format_reduction_arg(kwargs, arg_name, arg_type, arg_default=None):
-    """Formats argument as required by the reduction function ``neuron_reduce.subtree_reductor``
-
-    Formats inplace in ``kwargs``
-    Args:
-        kwargs: kwargs that will be passed to reduction function
-        arg_name: arg name of ``kwargs``
-        arg_type: expected type of ``arg_name``
-        arg_default: default value of ``arg_name``
-    """
-    if arg_name in kwargs:
-        kwargs[arg_name] = arg_type(kwargs[arg_name])
-    elif arg_default is not None:
-        kwargs[arg_name] = arg_default
+@click.group()
+def cli():
+    '''The CLI entry point'''
 
 
-@click.command(
-    short_help='''
-    Applies neuron reduction algorithm to a sonata network. The result is a new sonata network.''',
-    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True, )
+@cli.command(
+    short_help='''Applies neuron reduction algorithm to a sonata network. The reduced network
+    is stored in `reduced_network_dir`.''',
 )
 @click.argument('circuit_config_file', type=click.Path(exists=True, dir_okay=False))
-@click.argument('reduced_circuit_dir', type=click.Path(file_okay=False))
-@click.pass_context
-def cli(ctx, circuit_config_file: str, reduced_circuit_dir: str, ):
-    """Cli interface to the project.
+@click.argument('reduced_network_dir', type=click.Path(file_okay=False))
+@click.option('--reduction_frequency', required=True, default=0, show_default=True, type=float)
+@click.option('--model_filename', type=str, default='model.hoc')
+@click.option('--total_segments_manual', type=float, default=-1)
+@click.option('--mapping_type', type=str, default='impedance')
+def network(circuit_config_file: str, reduced_network_dir: str, **reduced_kwargs):
+    """Cli interface to network reduction.
 
     Args:
+
         circuit_config_file: path to the sonata circuit config file
-        reduced_circuit_dir: path to the dir that would store the reduced sonata network
-        ctx: named options of https://github.com/orena1/neuron_reduce.
-        Example ``--reduction_frequency 0``.
+        reduced_network_dir: path to the dir that would store the reduced sonata network
     """
-    kwargs = {ctx.args[i].strip('-'): ctx.args[i + 1] for i in range(0, len(ctx.args), 2)}
-    _format_reduction_arg(kwargs, 'reduction_frequency', float, 0)
-    _format_reduction_arg(kwargs, 'total_segments_manual', float, -1)
-    _format_reduction_arg(kwargs, 'return_seg_to_seg', bool, False)
-    reduce_network(Path(circuit_config_file), Path(reduced_circuit_dir), **kwargs)
+    reduce_network(Path(circuit_config_file), Path(reduced_network_dir), **reduced_kwargs)
+
+
+@cli.command(
+    short_help='''Applies neuron reduction algorithm to a node of sonata network. The result is
+    stored to `reduced_dir`.''',
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True, )
+)
+@click.argument('node_id', type=click.INT)
+@click.argument('reduced_dir', type=click.Path(file_okay=False))
+@click.argument('node_population_name', type=click.STRING)
+@click.argument('circuit_config_file', type=click.Path(exists=True, dir_okay=False))
+@click.option('--reduction_frequency', required=True, default=0, show_default=True, type=float)
+@click.option('--model_filename', type=str, default='model.hoc')
+@click.option('--total_segments_manual', type=float, default=-1)
+@click.option('--mapping_type', type=str, default='impedance')
+def node(node_id: int,
+         reduced_dir: str,
+         node_population_name: str,
+         circuit_config_file: str,
+         **reduced_kwargs):
+    """Cli interface to node reduction.
+
+    Args:
+
+        node_id: node id
+        reduced_dir: path to the dir that would store the reduced node files
+        node_population_name: node population name
+        circuit_config_file: path to the sonata circuit config file
+    """
+    _reduce_node_same_process(
+        node_id, Path(reduced_dir), node_population_name, Path(circuit_config_file),
+        **reduced_kwargs)

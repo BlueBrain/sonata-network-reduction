@@ -38,8 +38,7 @@ def test_morphology_multiple_children():
     assert m.get_section(2) == dend2
 
     with TemporaryDirectory() as tmpdirname:
-        morph_path = str(Path(tmpdirname, 'm.swc'))
-        m.save(morph_path)
+        m.save(Path(tmpdirname, 'm.swc'))
 
 
 def test_morphology_single_child():
@@ -64,5 +63,4 @@ def test_morphology_single_child():
     assert m.get_section(2) == dend3
 
     with TemporaryDirectory() as tmpdirname:
-        morph_path = str(Path(tmpdirname, 'm.swc'))
-        m.save(morph_path)
+        m.save(Path(tmpdirname, 'm.swc'))

@@ -1,12 +1,8 @@
 #!/usr/bin/env python
 
 import imp
-import sys
 
 from setuptools import setup, find_packages
-
-if sys.version_info < (3,):
-    sys.exit("Sorry, Python < 3 is not supported")
 
 VERSION = imp.load_source("", "sonata_network_reduction/version.py").__version__
 
@@ -24,6 +20,7 @@ setup(
     entry_points={
         'console_scripts': ['sonata-network-reduction=sonata_network_reduction.cli:cli']},
     license="BBP-internal-confidential",
+    python_requires='>=3.6',
     install_requires=[
         'numpy>=1.17',
         'h5py>=2.9',
@@ -32,9 +29,9 @@ setup(
         'tqdm>=4.34',
         'bluepyopt>=1.8.68',
         'bglibpy>=4.2',
-        'bluepysnap==0.2.0',
+        'bluepysnap>=0.1.2',
         'neuron_reduce @ git+https://git@github.com/orena1/neuron_reduce.git@master#egg=neuron_reduce',
-        'morphio==2.3.4',
+        'morphio>=2.3.4',
         'click>=6.7',
         'aibs-circuit-converter',
     ],

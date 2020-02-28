@@ -1,18 +1,19 @@
 """Main API"""
-import itertools
 import json
+import shutil
 import warnings
-from distutils.dir_util import copy_tree
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
-from typing import List
+from tempfile import TemporaryDirectory
+from typing import List, Iterable
 
 import h5py
 import pandas as pd
 from bluepysnap.circuit import Circuit
 from bluepysnap.edges import DYNAMICS_PREFIX as EDGES_DYNAMICS_PREFIX
 from bluepysnap.nodes import DYNAMICS_PREFIX as NODES_DYNAMICS_PREFIX, NodePopulation
+from sonata_network_reduction.node_reduction import reduce_node
 
 
 def _get_biophys_node_ids(population: NodePopulation) -> List:
@@ -48,21 +49,18 @@ def _find_edge_population_file(population_name: str, sonata_circuit: Circuit):
     return None
 
 
-def _overwrite_nodes(
-        node_path_list: List[Path], node_population_name: str, sonata_circuit: Circuit):
+def _overwrite_nodes(node_paths: Iterable[Path], node_population_name: str, circuit: Circuit):
     """Writes reduced nodes to their corresponding h5 files in circuit.
 
-    Deletes files from ``node_path_list`` after execution.
-
     Args:
-        node_path_list: list of tmp node files that contain reduced nodes
+        node_paths: iterable of tmp node .json files that contain reduced nodes
         node_population_name: name of node population
-        sonata_circuit: sonata circuit
+        circuit: sonata circuit
     """
-    nodes_filepath = _find_node_population_file(node_population_name, sonata_circuit)
+    nodes_filepath = _find_node_population_file(node_population_name, circuit)
     with h5py.File(nodes_filepath, 'r+') as nodes_f:
         nodes_h5ref = nodes_f['/nodes/{}/0'.format(node_population_name)]
-        for node_path in node_path_list:
+        for node_path in node_paths:
             node_id = int(node_path.stem)
             with node_path.open() as f:
                 node = json.load(f)
@@ -72,25 +70,23 @@ def _overwrite_nodes(
                     nodes_h5ref['dynamics_params/' + h5name][node_id] = node[name]
                 else:
                     nodes_h5ref[name][node_id] = node[name]
-            node_path.unlink()
 
 
-def _overwrite_edges(edges_path_list: List[Path], sonata_circuit: Circuit):
+def _overwrite_edges(edges_paths: Iterable[Path], circuit: Circuit):
     """Writes reduced edges to their corresponding h5 files in circuit.
 
-    Deletes files from ``edges_path_list`` after execution.
-
     Args:
-        edges_path_list: list of lists of tmp edge files that contain reduced edges
-        sonata_circuit: sonata circuit
+        edges_paths: iterable of tmp edge .json files that contain reduced edges
+        circuit: sonata circuit
     """
-    for edges_path in itertools.chain.from_iterable(edges_path_list):
+    for edges_path in edges_paths:
         edge_population_name = edges_path.stem
-        edge_population_filepath = _find_edge_population_file(edge_population_name, sonata_circuit)
+        edge_population_filepath = _find_edge_population_file(edge_population_name, circuit)
 
         with h5py.File(edge_population_filepath, 'r+') as f:
             edges_h5ref = f['/edges/{}/0'.format(edge_population_name)]
             edges = pd.read_json(edges_path)
+            edges.sort_index(inplace=True)
             dynamics_columns_idx = edges.columns.str.startswith(EDGES_DYNAMICS_PREFIX)
             dynamics_columns = edges.columns[dynamics_columns_idx]
             non_dynamics_columns = edges.columns[~dynamics_columns_idx]
@@ -99,7 +95,34 @@ def _overwrite_edges(edges_path_list: List[Path], sonata_circuit: Circuit):
             for column in dynamics_columns:
                 h5name = column.split(EDGES_DYNAMICS_PREFIX)[1]
                 edges_h5ref['dynamics_params/' + h5name][edges.index] = edges[column].to_numpy()
-        edges_path.unlink()
+
+
+def _overwrite_morphologies(morph_paths: Iterable[Path], circuit: Circuit):
+    """Moves reduced morphologies from their tmp dir to the circuit's 'morphologies_dir'
+
+    Args:
+        morph_paths: iterable of tmp morphology paths
+        circuit: sonata circuit
+    """
+    morph_dir = Path(circuit.config['components']['morphologies_dir'])
+    shutil.rmtree(morph_dir)
+    morph_dir.mkdir()
+    for morphology_path in morph_paths:
+        shutil.move(str(morphology_path), morph_dir)
+
+
+def _overwrite_biophys(biophys_paths: Iterable[Path], circuit: Circuit):
+    """Moves reduced biophysics from their tmp dir to the circuit's 'biophysical_neuron_models_dir'
+
+    Args:
+        biophys_paths: iterable of tmp biophysics paths
+        circuit: sonata circuit
+    """
+    biophys_dir = Path(circuit.config['components']['biophysical_neuron_models_dir'])
+    shutil.rmtree(biophys_dir)
+    biophys_dir.mkdir()
+    for biophys_path in biophys_paths:
+        shutil.move(str(biophys_path), biophys_dir)
 
 
 def reduce_population(population: NodePopulation, circuit_config_file: Path, **reduce_kwargs):
@@ -111,10 +134,6 @@ def reduce_population(population: NodePopulation, circuit_config_file: Path, **r
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
     """
-    # This is required by `tox -e docs`. It scans sources for documentation building and eventually
-    # tries to import `neuron` and fails on that.
-    # pylint: disable=import-outside-toplevel
-    from sonata_network_reduction.node_reduction import reduce_node
     try:
         ids = _get_biophys_node_ids(population)
     except RuntimeError:
@@ -124,21 +143,24 @@ def reduce_population(population: NodePopulation, circuit_config_file: Path, **r
     if len(ids) <= 0:
         return
 
-    with Pool(maxtasksperchild=1) as pool:
-        reduce_node_results = pool.map(partial(
+    with Pool() as pool, TemporaryDirectory() as tmp_dirpath:
+        tmp_dirpath = Path(tmp_dirpath)
+        reduced_dirs = [tmp_dirpath / str(id) for id in ids]
+        pool.starmap(partial(
             reduce_node,
-            circuit_config_file=circuit_config_file,
             node_population_name=population.name,
+            circuit_config_file=circuit_config_file,
             **reduce_kwargs),
-            ids)
+            zip(ids, reduced_dirs))
 
-    circuit = Circuit(str(circuit_config_file))
-    node_list, edges_list = zip(*reduce_node_results)
-    _overwrite_nodes(node_list, population.name, circuit)
-    _overwrite_edges(edges_list, circuit)
+        circuit = Circuit(str(circuit_config_file))
+        _overwrite_nodes(tmp_dirpath.rglob('node/*.json'), population.name, circuit)
+        _overwrite_edges(tmp_dirpath.rglob('edges/*.json'), circuit)
+        _overwrite_morphologies(tmp_dirpath.rglob('morphology/*.*'), circuit)
+        _overwrite_biophys(tmp_dirpath.rglob('biophys/*.*'), circuit)
 
 
-def reduce_network(circuit_config_file: Path, reduced_circuit_dir: Path, **reduce_kwargs):
+def reduce_network(circuit_config_file: Path, reduced_dir: Path, **reduce_kwargs):
     """ Reduces the network represented by ``circuit_config_filepath`` param.
 
     Assumed that the circuit is represented by the parent directory of ``circuit_config_filepath``.
@@ -146,16 +168,15 @@ def reduce_network(circuit_config_file: Path, reduced_circuit_dir: Path, **reduc
 
     Args:
         circuit_config_file: path to Sonata circuit config file
-        reduced_circuit_dir: path to a directory where to save the reduced.
+        reduced_dir: path to a directory where to save the reduced network.
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
     """
-    if reduced_circuit_dir.exists() and any(reduced_circuit_dir.iterdir()):
-        raise ValueError('{} is not empty. It must be empty.'.format(reduced_circuit_dir))
-    reduced_circuit_dir.mkdir(exist_ok=True)
-    copy_tree(str(circuit_config_file.parent), str(reduced_circuit_dir))
+    if reduced_dir.exists():
+        raise ValueError('{} must not exist. Please delete it.'.format(reduced_dir))
+    shutil.copytree(str(circuit_config_file.parent), str(reduced_dir))
 
     original_circuit = Circuit(str(circuit_config_file))
-    reduced_circuit_config_file = reduced_circuit_dir / circuit_config_file.name
+    reduced_circuit_config_file = reduced_dir / circuit_config_file.name
     for population in original_circuit.nodes.values():
         reduce_population(population, reduced_circuit_config_file, **reduce_kwargs)

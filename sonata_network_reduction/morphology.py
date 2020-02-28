@@ -1,5 +1,6 @@
 """Module that recreates morphology of currently instantiated neuron in NEURON simulator."""
 import re
+from pathlib import Path
 from typing import Tuple, List, Iterable
 import numpy as np
 
@@ -131,7 +132,7 @@ class NeuronMorphology:
             self._put_section(h_section)
             self._create_neurite(section, h_section)
 
-    def is_equal_to(self, morphology_filepath: str) -> bool:
+    def is_equal_to(self, morphology_filepath: Path) -> bool:
         """Whether ``self`` is equal to a morphology under ``morphology_filepath``.
 
         This method's purpose is to check section indexing of ``self``. You should save ``self`` to
@@ -195,12 +196,14 @@ class NeuronMorphology:
         """
         return self._id_to_h_section[section_id]
 
-    def save(self, filepath: str):
+    def save(self, filepath: Path):
         """Saves morphology to a file.
 
+        Additionally validates equality of the saved with `self.is_equal_to`.
         Args:
-            filepath: file
+            filepath: path to save file
         """
+        filepath.parent.mkdir(exist_ok=True)
         self.morph.write(filepath)
         assert self.is_equal_to(filepath) is True
 

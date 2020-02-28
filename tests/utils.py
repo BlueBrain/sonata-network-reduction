@@ -23,6 +23,8 @@ def circuit_9cells():
 def compile_circuit_mod_files(circuit):
     """Compiles circuit's mod files.
 
+    IMPORTANT! It changes the current working dir to a temporary directory with compiled mods
+    during its execution. Restores it back when finishes.
     Args:
         circuit(Circuit): instance of Circuit
 
@@ -32,9 +34,12 @@ def compile_circuit_mod_files(circuit):
     mod_dirpath = Path(circuit.config['components']['mechanisms_dir'], 'modfiles')
     compiled_mod_dirpath, compiled_mod_filepath = _compile_mod_files(mod_dirpath)
     h.nrn_load_dll(compiled_mod_filepath)
+    original_cwd = os.getcwd()
     try:
+        os.chdir(compiled_mod_dirpath)
         yield
     finally:
+        os.chdir(original_cwd)
         shutil.rmtree(compiled_mod_dirpath)
 
 
