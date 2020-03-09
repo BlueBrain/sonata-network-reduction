@@ -1,4 +1,5 @@
 """Main API"""
+import os
 import json
 import shutil
 import warnings
@@ -143,7 +144,7 @@ def reduce_population(population: NodePopulation, circuit_config_file: Path, **r
     if len(ids) <= 0:
         return
 
-    with Pool() as pool, TemporaryDirectory() as tmp_dirpath:
+    with Pool(min(os.cpu_count(), 8)) as pool, TemporaryDirectory() as tmp_dirpath:
         tmp_dirpath = Path(tmp_dirpath)
         reduced_dirs = [tmp_dirpath / str(id) for id in ids]
         pool.starmap(partial(
