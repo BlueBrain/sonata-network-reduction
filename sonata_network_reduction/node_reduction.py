@@ -341,5 +341,5 @@ def reduce_node(
     main_args = [node_id, reduced_dir, node_population_name, circuit_config_file]
     # call node reduction via cli.py and separate process
     cmd = ['sonata-network-reduction', 'node'] + main_args + neuron_reduce_args
-    process = subprocess.run(cmd, check=True, timeout=60)
+    process = subprocess.run(cmd, check=True, timeout=60 * 60)
     return process.returncode
