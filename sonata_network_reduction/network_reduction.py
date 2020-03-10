@@ -1,50 +1,48 @@
 """Main API"""
 import os
+import itertools
 import json
 import shutil
+import traceback
 import warnings
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import List, Iterable
+from typing import Generator, Iterable
 
 import h5py
 import pandas as pd
 from bluepysnap.circuit import Circuit
 from bluepysnap.edges import DYNAMICS_PREFIX as EDGES_DYNAMICS_PREFIX
 from bluepysnap.nodes import DYNAMICS_PREFIX as NODES_DYNAMICS_PREFIX, NodePopulation
+from sonata_network_reduction.exceptions import SonataReductionError
 from sonata_network_reduction.node_reduction import reduce_node
 
 
-def _get_biophys_node_ids(population: NodePopulation) -> List:
+def _get_biophys_node_ids(population: NodePopulation) -> Generator:
     """Gets ids of biophysics nodes.
 
     Args:
         population: node population
 
     Returns:
-        List of node ids that have biophysics
+        Generator of node ids that have biophysics
     """
-    node_ids = []
-    for node_id in population.ids():
-        node = population.get(node_id)
-        has_morphology = node.get('morphology') is not None
-        is_biophysical = node.get('model_type') == 'biophysical'
-        if has_morphology or is_biophysical:
-            node_ids.append(node_id)
-    return node_ids
+    node_generator = ((node_id, population.get(node_id)) for node_id in population.ids())
+    return (node_id for node_id, node in node_generator if
+            ('morphology' in node) or (node.get('model_type') == 'biophysical'))
 
 
-def _find_node_population_file(population_name: str, sonata_circuit: Circuit):
-    for nodes in sonata_circuit.config['networks']['nodes']:
+def _find_node_population_file(population_name: str, circuit: Circuit):
+    for nodes in circuit.config['networks']['nodes']:
         if population_name in nodes['nodes_file']:
             return nodes['nodes_file']
     return None
 
 
-def _find_edge_population_file(population_name: str, sonata_circuit: Circuit):
-    for edges in sonata_circuit.config['networks']['edges']:
+def _find_edge_population_file(population_name: str, circuit: Circuit):
+    for edges in circuit.config['networks']['edges']:
         if population_name in edges['edges_file']:
             return edges['edges_file']
     return None
@@ -106,7 +104,6 @@ def _overwrite_morphologies(morph_paths: Iterable[Path], circuit: Circuit):
         circuit: sonata circuit
     """
     morph_dir = Path(circuit.config['components']['morphologies_dir'])
-    shutil.rmtree(morph_dir)
     morph_dir.mkdir()
     for morphology_path in morph_paths:
         shutil.move(str(morphology_path), morph_dir)
@@ -120,41 +117,64 @@ def _overwrite_biophys(biophys_paths: Iterable[Path], circuit: Circuit):
         circuit: sonata circuit
     """
     biophys_dir = Path(circuit.config['components']['biophysical_neuron_models_dir'])
-    shutil.rmtree(biophys_dir)
     biophys_dir.mkdir()
     for biophys_path in biophys_paths:
         shutil.move(str(biophys_path), biophys_dir)
 
 
-def reduce_population(population: NodePopulation, circuit_config_file: Path, **reduce_kwargs):
+def _reduce_node_proxy(
+        node_id: int,
+        reduced_dir: Path,
+        node_population_name: str,
+        circuit_config_file: Path,
+        **reduce_kwargs):
+    """Proxy for `reduce_node` function that catches Exceptions and prints them as warnings.
+    The purpose is to prevent node population reduction from failing because of one node failure."""
+    try:
+        reduce_node(node_id, reduced_dir / str(node_id), node_population_name, circuit_config_file,
+                    **reduce_kwargs)
+    except RuntimeError as e:
+        raise SonataReductionError('reduction of node {} failed'.format(node_id)) from e
+
+
+def reduce_population(
+        population: NodePopulation,
+        original_circuit_config_file: Path,
+        reduced_circuit_config_file: Path,
+        **reduce_kwargs):
     """ Reduces node population.
 
     Args:
         population: node population
-        circuit_config_file: reduced sonata circuit config filepath
+        original_circuit_config_file: original sonata circuit config filepath
+        reduced_circuit_config_file: reduced sonata circuit config filepath
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``.
     """
     try:
         ids = _get_biophys_node_ids(population)
-    except RuntimeError:
-        warnings.warn(
-            'Can\'t get node ids of "{}" population. Is it virtual?'.format(population.name))
-        return
-    if len(ids) <= 0:
+        first_id = next(ids)
+    except (StopIteration, RuntimeError):
+        warnings.warn('No biophys nodes in "{}" population. Is it virtual?'.format(population.name))
         return
 
-    with Pool(min(os.cpu_count(), 8)) as pool, TemporaryDirectory() as tmp_dirpath:
+    # we take a half of available processes because the other half is for `reduce_node`
+    num_processes = int(len(os.sched_getaffinity(0)) / 2)
+    with Pool(num_processes) as pool, TemporaryDirectory() as tmp_dirpath:
         tmp_dirpath = Path(tmp_dirpath)
-        reduced_dirs = [tmp_dirpath / str(id) for id in ids]
-        pool.starmap(partial(
-            reduce_node,
-            node_population_name=population.name,
-            circuit_config_file=circuit_config_file,
-            **reduce_kwargs),
-            zip(ids, reduced_dirs))
+        try:
+            pool.map(partial(
+                _reduce_node_proxy,
+                reduced_dir=tmp_dirpath,
+                node_population_name=population.name,
+                circuit_config_file=original_circuit_config_file,
+                **reduce_kwargs),
+                itertools.chain([first_id], ids))
+        except SonataReductionError:
+            e_text = traceback.format_exc()
+            warnings.warn(e_text)
 
-        circuit = Circuit(str(circuit_config_file))
+        circuit = Circuit(str(reduced_circuit_config_file))
         _overwrite_nodes(tmp_dirpath.rglob('node/*.json'), population.name, circuit)
         _overwrite_edges(tmp_dirpath.rglob('edges/*.json'), circuit)
         _overwrite_morphologies(tmp_dirpath.rglob('morphology/*.*'), circuit)
@@ -175,9 +195,15 @@ def reduce_network(circuit_config_file: Path, reduced_dir: Path, **reduce_kwargs
     """
     if reduced_dir.exists():
         raise ValueError('{} must not exist. Please delete it.'.format(reduced_dir))
-    shutil.copytree(str(circuit_config_file.parent), str(reduced_dir))
-
     original_circuit = Circuit(str(circuit_config_file))
+    # don't copy morphologies and biophysics dir as they can be quite huge
+    ignore_dirs = (
+        Path(original_circuit.config['components']['biophysical_neuron_models_dir']).name,
+        Path(original_circuit.config['components']['morphologies_dir']).name)
+    shutil.copytree(str(circuit_config_file.parent), str(reduced_dir),
+                    ignore=shutil.ignore_patterns(*ignore_dirs))
+
     reduced_circuit_config_file = reduced_dir / circuit_config_file.name
     for population in original_circuit.nodes.values():
-        reduce_population(population, reduced_circuit_config_file, **reduce_kwargs)
+        reduce_population(population, circuit_config_file, reduced_circuit_config_file,
+                          **reduce_kwargs)

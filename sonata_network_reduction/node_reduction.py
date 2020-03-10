@@ -166,19 +166,19 @@ def _write_result_dir(node: pd.Series, edges: pd.DataFrame, node_id: int) \
     return node_path, edges_paths
 
 
-def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, sonata_circuit: Circuit) -> Cell:
+def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, circuit: Circuit) -> Cell:
     """Instantiates bglibpy.Cell for node.
 
     Args:
         node_id: node ID
         node: node data
-        sonata_circuit: sonata circuit
+        circuit: sonata circuit
 
     Returns:
         instance of bglibpy.Cell
     """
-    biophys_filepath = _get_biophys_filepath(node, sonata_circuit)
-    morphology_filepath = _get_morphology_filepath(node, sonata_circuit)
+    biophys_filepath = _get_biophys_filepath(node, circuit)
+    morphology_filepath = _get_morphology_filepath(node, circuit)
     return Cell(
         str(biophys_filepath),
         morphology_filepath.name,
@@ -190,8 +190,7 @@ def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, sonata_circuit: Cir
     )
 
 
-def _instantiate_cell_sonata(node_id: int, node: pd.Series, sonata_circuit: Circuit) \
-        -> models.CellModel:
+def _instantiate_cell_sonata(node_id: int, node: pd.Series, circuit: Circuit) -> models.CellModel:
     """Deprecated for now. Instantiates node in NEURON with `ephys` module."""
 
     class _HocCellModel(models.HocCellModel):
@@ -210,8 +209,8 @@ def _instantiate_cell_sonata(node_id: int, node: pd.Series, sonata_circuit: Circ
                 self.gid, str(morph_path.parent), morph_path.name)
             self.icell = self.cell.CellRef
 
-    biophys_filepath = _get_biophys_filepath(node, sonata_circuit)
-    morphology_filepath = _get_morphology_filepath(node, sonata_circuit)
+    biophys_filepath = _get_biophys_filepath(node, circuit)
+    morphology_filepath = _get_morphology_filepath(node, circuit)
     template_name = utils.to_valid_nrn_name(biophys_filepath.stem)
     if biophys_filepath.suffix == '.nml':
         biophysics = convert_to_hoc.load_neuroml(str(biophys_filepath))
@@ -237,34 +236,34 @@ def _instantiate_cell_sonata(node_id: int, node: pd.Series, sonata_circuit: Circ
     return ephys_cell
 
 
-def _get_biophys_filepath(node: pd.Series, sonata_circuit: Circuit) -> Path:
+def _get_biophys_filepath(node: pd.Series, circuit: Circuit) -> Path:
     """Gets filepath to node's biophysics file
 
     Args:
         node: node data
-        sonata_circuit: sonata circuit
+        circuit: sonata circuit
 
     Returns:
         Filepath
     """
     extension, name = node['model_template'].split(':')
     return Path(
-        sonata_circuit.config['components']['biophysical_neuron_models_dir'],
+        circuit.config['components']['biophysical_neuron_models_dir'],
         name + '.' + extension
     )
 
 
-def _get_morphology_filepath(node: pd.Series, sonata_circuit: Circuit) -> Path:
+def _get_morphology_filepath(node: pd.Series, circuit: Circuit) -> Path:
     """Gets filepath to node's morphology file
 
     Args:
         node: node data
-        sonata_circuit: sonata circuit
+        circuit: sonata circuit
 
     Returns:
         Filepath
     """
-    morph_dir = Path(sonata_circuit.config['components']['morphologies_dir'])
+    morph_dir = Path(circuit.config['components']['morphologies_dir'])
     if morph_dir.joinpath('ascii').is_dir():
         return morph_dir.joinpath('ascii', node['morphology'] + '.asc')
     else:

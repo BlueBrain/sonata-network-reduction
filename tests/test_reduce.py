@@ -1,6 +1,9 @@
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+import warnings
+
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -59,6 +62,23 @@ def test_reduce_network(circuit_9cells):
                 assert edges.le(reduced_node_sections[node_id]).all()
 
 
+def _reduce_node_failed_mock(
+        node_id, reduced_dir, node_population_name, circuit_config_file, **reduce_kwargs):
+    if node_id == 7:
+        raise RuntimeError('dummy')
+
+
+@patch('sonata_network_reduction.network_reduction.reduce_node', new=_reduce_node_failed_mock)
+def test_reduce_network_failed_node(circuit_9cells):
+    _, circuit_config_path, _ = circuit_9cells
+    with warnings.catch_warnings(record=True) as w, tempfile.TemporaryDirectory() as tmp_dirpath:
+        warnings.filterwarnings('ignore', 'No biophys nodes*')
+        reduce_network(circuit_config_path, Path(tmp_dirpath) / 'reduced', reduction_frequency=0)
+        assert len(w) == 1
+        message = str(w[0].message)
+        assert 'dummy' in message and 'reduction of node 7 failed' in message
+
+
 def _reduce_node_mock(
         node_id, reduced_dir, node_population_name, circuit_config_file, **reduce_kwargs):
     reduced_dir.mkdir(parents=True)
@@ -68,14 +88,10 @@ def _reduce_node_mock(
     node_path.parent.mkdir()
     node.to_json(node_path)
 
-    circuit = Circuit(circuit_config_file)
     edges_path = reduced_dir / 'edges'
     edges_path.mkdir()
-    for edge_population_name, edge_population in circuit.edges.items():
-        if edge_population.target.name == node_population_name:
-            edges = edge_population.afferent_edges(node_id, ['afferent_section_pos'])
-            edges = edges.assign(afferent_section_pos=node_id)
-            edges.to_json(edges_path / (edge_population_name + '.json'))
+    edges = pd.DataFrame({"afferent_section_pos": {str(node_id): node_id}})
+    edges.to_json(edges_path / 'excvirt_cortex.json')
 
     morphology_path = reduced_dir / 'morphology' / '{}.swc'.format(node_id)
     morphology_path.parent.mkdir()
@@ -95,14 +111,18 @@ def test_save_network(circuit_9cells):
 
         morph_dir = Path(reduced_circuit.config['components']['morphologies_dir'])
         biophys_dir = Path(reduced_circuit.config['components']['biophysical_neuron_models_dir'])
-        for node_id in reduced_circuit.nodes['cortex'].ids():
+        node_ids = reduced_circuit.nodes['cortex'].ids()
+        for node_id in node_ids:
             assert morph_dir.joinpath(str(node_id) + '.swc').is_file()
             assert biophys_dir.joinpath(str(node_id) + '.hoc').is_file()
             assert reduced_circuit.nodes['cortex'].get(node_id)['model_template'] == 'dummy'
-            for edge_population in reduced_circuit.edges.values():
-                if edge_population.target.name == 'cortex':
-                    edges = edge_population.afferent_edges(node_id, ['afferent_section_pos'])
-                    assert (edges['afferent_section_pos'] == node_id).all()
+
+        excvirt_edges_h5 = next(
+            edges['edges_file'] for edges in reduced_circuit.config['networks']['edges']
+            if 'excvirt_cortex' in edges['edges_file'])
+        with h5py.File(excvirt_edges_h5) as h5f:
+            mocked_pos = h5f['/edges/excvirt_cortex/0/afferent_section_pos'][node_ids].tolist()
+            assert mocked_pos == node_ids.tolist()
 
 
 def _subtree_reductor_mock(cell, synapses, netcons, **kwargs):
@@ -139,4 +159,5 @@ def test_save_node(circuit_9cells):
         morph_dirpath = Path(circuit.config['components']['morphologies_dir'])
         original_morph_file = morph_dirpath / 'Scnn1a_473845048_m.swc'
         reduced_morph_file = tmp_dirpath / 'morphology' / 'Scnn1a_473845048_m_0.swc'
-        assert not diff(original_morph_file, reduced_morph_file) is True
+        diff_result = diff(original_morph_file, reduced_morph_file)
+        assert not diff_result is True, diff_result.info
