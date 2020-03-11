@@ -1,12 +1,10 @@
 """Main API"""
-import os
 import itertools
 import json
 import shutil
 import traceback
 import warnings
 from functools import partial
-from multiprocessing import Pool
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Generator, Iterable
@@ -16,6 +14,8 @@ import pandas as pd
 from bluepysnap.circuit import Circuit
 from bluepysnap.edges import DYNAMICS_PREFIX as EDGES_DYNAMICS_PREFIX
 from bluepysnap.nodes import DYNAMICS_PREFIX as NODES_DYNAMICS_PREFIX, NodePopulation
+from joblib import Parallel, delayed, parallel_backend
+
 from sonata_network_reduction.exceptions import SonataReductionError
 from sonata_network_reduction.node_reduction import reduce_node
 
@@ -158,18 +158,15 @@ def reduce_population(
         warnings.warn('No biophys nodes in "{}" population. Is it virtual?'.format(population.name))
         return
 
-    # we take a half of available processes because the other half is for `reduce_node`
-    num_processes = int(len(os.sched_getaffinity(0)) / 2)
-    with Pool(num_processes) as pool, TemporaryDirectory() as tmp_dirpath:
+    with parallel_backend('threading'), TemporaryDirectory() as tmp_dirpath:
         tmp_dirpath = Path(tmp_dirpath)
         try:
-            pool.map(partial(
+            Parallel()(delayed(partial(
                 _reduce_node_proxy,
                 reduced_dir=tmp_dirpath,
                 node_population_name=population.name,
                 circuit_config_file=original_circuit_config_file,
-                **reduce_kwargs),
-                itertools.chain([first_id], ids))
+                **reduce_kwargs))(id) for id in itertools.chain([first_id], ids))
         except SonataReductionError:
             e_text = traceback.format_exc()
             warnings.warn(e_text)

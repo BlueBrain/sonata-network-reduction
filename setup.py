@@ -27,6 +27,7 @@ setup(
         'pandas>=0.25',
         'lxml>=4.3.4',
         'tqdm>=4.34',
+        'joblib>=0.14',
         'bluepyopt>=1.8.68',
         'bglibpy>=4.2',
         'bluepysnap>=0.1.2',
