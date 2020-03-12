@@ -8,10 +8,11 @@ VERSION = imp.load_source("", "sonata_network_reduction/version.py").__version__
 
 setup(
     name="sonata-network-reduction",
-    author="BlueBrain NSE",
-    author_email="aleksei.sanin@epfl.ch",
+    author="bbp-ou-nse,Alexsei Sanin",
+    author_email="bbp-ou-nse@groupes.epfl.ch",
     version=VERSION,
-    description="TODO: write something meaningful here",
+    description="Reduces neuron morphologies from SONATA circuits by the algorithm: "
+                "https://github.com/orena1/neuron_reduce",
     url="https://bbpteam.epfl.ch/documentation/projects/sonata-network-reduction",
     project_urls={
         "Tracker": "https://bbpteam.epfl.ch/project/issues/projects/NSETM/issues",
