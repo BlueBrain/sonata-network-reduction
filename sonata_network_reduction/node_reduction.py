@@ -1,9 +1,8 @@
 """Module that is responsible for single node reduction."""
 import itertools
-import os
 import subprocess
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
 from typing import Tuple, List, Dict
 
 from aibs_circuit_converter import convert_to_hoc
@@ -25,6 +24,7 @@ from sonata_network_reduction.edge_reduction import instantiate_edges_bglibpy, g
 from sonata_network_reduction import utils
 from sonata_network_reduction.biophysics import get_seclist_nsegs, get_mechs_params
 from sonata_network_reduction.morphology import NeuronMorphology, copy_soma
+from sonata_network_reduction.write_reduced import write_reduced_to_circuit
 
 
 def _current_neuron_soma():
@@ -126,44 +126,6 @@ def _update_reduced_node(node_id: int, node: pd.Series):
     """
     node.at['morphology'] += '_{}'.format(node_id)
     node.at['model_template'] += '_{}'.format(node_id)
-
-
-def _write_result_dir(node: pd.Series, edges: pd.DataFrame, node_id: int) \
-        -> Tuple[Path, List[Path]]:
-    """Writes data of reduced node and edges to a temporary directory.
-
-    We can't update directly h5 files of node and edges because reduction happens in parallel.
-    Instead we save reduced h5 files to a temp directory so they can be picked up later.
-    Args:
-        node: reduced node data
-        edges: reduced edges data
-        node_id: node ID
-
-    Returns:
-        Tuple of path to reduced node file and list of paths to reduced edges files.
-    """
-
-    def _create_tmp_path(name: str):
-        tmp_file = NamedTemporaryFile(delete=False)
-        tmp_path = Path(tmp_file.name)
-        parent_path = tmp_path.parent.joinpath('reduction', str(node_id))
-        parent_path.mkdir(parents=True, exist_ok=True)
-        tmp_path = parent_path.joinpath(name)
-        os.rename(tmp_file.name, tmp_path)
-        return tmp_path
-
-    node_path = _create_tmp_path(str(node_id) + '.json')
-    node.to_json(node_path)
-    edges_paths = []
-    for grp_index, grp_edges in edges.groupby(
-            level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT]):
-        grp_edges.reset_index(
-            level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT], drop=True, inplace=True)
-        population_name = grp_index[0]
-        edges_path = _create_tmp_path(population_name + '.json')
-        grp_edges.to_json(edges_path)
-        edges_paths.append(edges_path)
-    return node_path, edges_paths
 
 
 def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, circuit: Circuit) -> Cell:
@@ -272,9 +234,9 @@ def _get_morphology_filepath(node: pd.Series, circuit: Circuit) -> Path:
 
 def _reduce_node_same_process(
         node_id: int,
-        reduced_dir: Path,
         node_population_name: str,
         circuit_config_file: Path,
+        reduced_dir: Path = None,
         **reduce_kwargs):
     """Reduces single node in the same as caller's process. Signature is identical to
     `reduce_node`"""
@@ -300,20 +262,28 @@ def _reduce_node_same_process(
     update_reduced_edges(reduced_netcons, netcons_map, edges, morphology)
     _update_reduced_node(node_id, node)
 
-    reduced_dir.mkdir(exist_ok=True)
+    inplace = reduced_dir is None
+    if inplace:
+        tmp_dir = TemporaryDirectory()
+        reduced_dir = Path(tmp_dir.name)
+    else:
+        reduced_dir.mkdir(parents=True, exist_ok=True)
     morphology_filepath = reduced_dir / 'morphology' / _get_morphology_filepath(node, circuit).name
     biophys_filepath = reduced_dir / 'biophys' / _get_biophys_filepath(node, circuit).name
     morphology.save(morphology_filepath)
     _save_biophysics(biophys_filepath, morphology, morphology_filepath.name)
     _save_node(reduced_dir / 'node', node, node_id)
     _save_edges(reduced_dir / 'edges', edges)
+    if inplace:
+        utils.close_sonata_circuit(circuit)
+        write_reduced_to_circuit(reduced_dir, circuit_config_file, node_population_name)
 
 
 def reduce_node(
         node_id: int,
-        reduced_dir: Path,
         node_population_name: str,
         circuit_config_file: Path,
+        reduced_dir: Path,
         **reduce_kwargs):
     """Reduces single node.
 
@@ -326,9 +296,10 @@ def reduce_node(
 
     Args:
         node_id: node id
-        reduced_dir: dir where to save results of reduction
         node_population_name: node population name
         circuit_config_file: reduced sonata circuit config filepath
+        reduced_dir: dir where to save results of reduction. If None then the node will be reduced
+        in-place of its circuit.
         **reduce_kwargs: arguments to pass to the underlying call of
             ``neuron_reduce.subtree_reductor`` like ``reduction_frequency``
 
@@ -337,7 +308,7 @@ def reduce_node(
     """
     neuron_reduce_args = list(map(str, itertools.chain(*reduce_kwargs.items())))
     node_id = str(node_id)
-    main_args = [node_id, reduced_dir, node_population_name, circuit_config_file]
+    main_args = [node_id, node_population_name, circuit_config_file, reduced_dir]
     # call node reduction via cli.py and separate process
     cmd = ['sonata-network-reduction', 'node'] + main_args + neuron_reduce_args
     process = subprocess.run(cmd, check=True, timeout=60 * 60)

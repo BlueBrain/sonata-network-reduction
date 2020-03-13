@@ -58,6 +58,12 @@ In a fresh virtualenv:
 
 Usage
 -----
+
+Depsite the method you choose, the circuit for simplification must be self-contained. It means that:
+
+- Circuit's :file:`config.json` must not contain absolute filepaths.
+- Circuit's :file:`config.json` must be in a folder that contains all the circuit that it describes.
+
 Python
 ~~~~~~
 
@@ -69,22 +75,28 @@ Python
 
 Shell
 ~~~~~
-
-.. code:: bash
-
-    sonata-network-reduction /circuit_config_filepath.json /reduced_network_dir
-
 In bash you can use the following ``neuron_reduce`` arguments: ``reduction_frequency``,
 ``model_filename``, ``total_segments_manual``, ``mapping_type``. An example:
 
 .. code:: bash
 
-    sonata-network-reduction /circuit_config_filepath.json /reduced_network_dir --reduction-frequency 0.5 --total_segments_manual 0.1
+    # entire network reduction
+    sonata-network-reduction network /circuit_config_filepath.json /reduced_network_dir --reduction-frequency 0.5 --total_segments_manual 0.1
 
-As the result :file:`/reduced_network_dir` must contain the copy of sonata network by
+
+As the result :file:`/reduced_network_dir` must contain the copy of the SONATA network of
 :file:`/circuit_config_filepath.json` where all 'biophysical' neurons have been replaced with their
 reduced versions. That means their morphologies have been reduced and their edges are updated with
 new sections ids and positions.
+
+.. code:: bash
+
+    # single node inplace reduction. Node id is '3' and node population is 'cortex'.
+    sonata-network-reduction node 3 cortex /circuit_config_filepath.json --reduction-frequency 0.5
+
+
+As the result the SONATA network of :file:`/circuit_config_filepath.json` must have its node with
+id '3' to be reduced with its edges.
 
 BB5
 ~~~

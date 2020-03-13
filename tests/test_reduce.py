@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -30,6 +31,30 @@ def _get_node_section_map(node_population_name, sonata_circuit):
     return node_section_map
 
 
+def test_reduce_node_inplace(circuit_9cells):
+    _, circuit_config_path, circuit = circuit_9cells
+    original_node_sections = _get_node_section_map('cortex', circuit)
+
+    with compile_circuit_mod_files(circuit), tempfile.TemporaryDirectory() as tmp_dirpath:
+        circuit_copy_dirpath = Path(tmp_dirpath) / 'circuit_copy'
+        shutil.copytree(str(circuit_config_path.parent), str(circuit_copy_dirpath))
+        circuit_copy_config_path = circuit_copy_dirpath / circuit_config_path.name
+        _reduce_node_same_process(0, 'cortex', circuit_copy_config_path, reduction_frequency=0)
+        circuit_copy = Circuit(str(circuit_copy_config_path))
+        node_population = circuit_copy.nodes['cortex']
+        reduced_node = node_population.get(0)
+        assert reduced_node['model_template'].endswith('_0')
+        assert reduced_node['morphology'].endswith('_0')
+
+        node_copy_sections = _get_node_section_map('cortex', circuit_copy)
+        assert node_copy_sections[0] < original_node_sections[0]
+        for node_id in set(node_population.ids()) - {0}:
+            assert original_node_sections[node_id] == node_copy_sections[node_id]
+        for edges in circuit_copy.edges.values():
+            assert edges.afferent_edges(0, 'morpho_section_id_post') \
+                .lt(original_node_sections[0]).all()
+
+
 def test_reduce_network(circuit_9cells):
     _, circuit_config_path, circuit = circuit_9cells
     node_population_name = 'cortex'
@@ -48,8 +73,10 @@ def test_reduce_network(circuit_9cells):
         for node_id in node_population.ids():
             node = node_population.get(node_id)
             morphology_filepath = _get_morphology_filepath(node, reduced_sonata_circuit)
+            assert morphology_filepath.stem.endswith('_' + str(node_id))
             assert morphology_filepath.is_file()
             biophys_filepath = _get_biophys_filepath(node, reduced_sonata_circuit)
+            assert biophys_filepath.stem.endswith('_' + str(node_id))
             assert biophys_filepath.is_file()
 
             if not hasattr(h, biophys_filepath.stem):
@@ -63,7 +90,7 @@ def test_reduce_network(circuit_9cells):
 
 
 def _reduce_node_failed_mock(
-        node_id, reduced_dir, node_population_name, circuit_config_file, **reduce_kwargs):
+        node_id, node_population_name, circuit_config_file, reduced_dir, **reduce_kwargs):
     if node_id == 7:
         raise RuntimeError('dummy')
 
@@ -80,7 +107,7 @@ def test_reduce_network_failed_node(circuit_9cells):
 
 
 def _reduce_node_mock(
-        node_id, reduced_dir, node_population_name, circuit_config_file, **reduce_kwargs):
+        node_id, node_population_name, circuit_config_file, reduced_dir, **reduce_kwargs):
     reduced_dir.mkdir(parents=True)
 
     node = pd.Series({'model_template': 'dummy'})
@@ -136,7 +163,7 @@ def test_save_node(circuit_9cells):
     with compile_circuit_mod_files(circuit), tempfile.TemporaryDirectory() as tmp_dirpath:
         tmp_dirpath = Path(tmp_dirpath)
         _reduce_node_same_process(
-            0, tmp_dirpath, 'cortex', circuit_config_path, reduction_frequency=0)
+            0, 'cortex', circuit_config_path, tmp_dirpath, reduction_frequency=0)
 
         # node stayed the same except new names for 'model_template' and 'morphology'
         original_node = circuit.nodes['cortex'].get(0)

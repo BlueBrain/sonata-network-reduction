@@ -16,6 +16,7 @@ then
       echo "Preparing NEURON ..."
       ./build.sh >prepare.log 2>&1
       echo "Configuring NEURON ..."
+      # use `--with-readline=no` on MacOS
       ./configure --prefix=${INSTALL_DIR}/nrn --without-x --with-nrnpython=python --disable-rx3d >configure.log 2>&1
       echo "Building NEURON ..."
       make -j4 >make.log 2>&1
@@ -38,4 +39,3 @@ else
     export PATH="${INSTALL_DIR}/nrn/x86_64/bin":${PATH}
     export PYTHONPATH="${INSTALL_DIR}/nrn/lib/python":${PYTHONPATH}
 fi
-

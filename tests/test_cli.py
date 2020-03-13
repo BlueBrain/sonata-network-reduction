@@ -49,16 +49,35 @@ def test_cli_network_kwargs():
             }
 
 
-def test_cli_node_default():
+def test_cli_node():
     with tempfile.TemporaryDirectory() as tmpdirname:
         with patch('sonata_network_reduction.cli._reduce_node_same_process') as reduce_node_mock:
             reduce_node_mock.return_value = 0
             runner = CliRunner()
-            result = runner.invoke(node, ['0', tmpdirname, 'cortex', str(circuit_config_file)])
+            result = runner.invoke(node, ['0', 'cortex', str(circuit_config_file), tmpdirname])
             assert reduce_node_mock.call_count == 1
             assert result.exit_code == 0
             args = reduce_node_mock.call_args[0]
-            assert args == (0, Path(tmpdirname), 'cortex', Path(circuit_config_file))
+            assert args == (0, 'cortex', Path(circuit_config_file), Path(tmpdirname))
+            kwargs = reduce_node_mock.call_args[1]
+            assert kwargs == {
+                'reduction_frequency': 0,
+                'mapping_type': 'impedance',
+                'model_filename': 'model.hoc',
+                'total_segments_manual': -1.0
+            }
+
+
+def test_cli_node_inplace():
+    with tempfile.TemporaryDirectory():
+        with patch('sonata_network_reduction.cli._reduce_node_same_process') as reduce_node_mock:
+            reduce_node_mock.return_value = 0
+            runner = CliRunner()
+            result = runner.invoke(node, ['0', 'cortex', str(circuit_config_file)], 'y')
+            assert reduce_node_mock.call_count == 1
+            assert result.exit_code == 0
+            args = reduce_node_mock.call_args[0]
+            assert args == (0, 'cortex', Path(circuit_config_file), None)
             kwargs = reduce_node_mock.call_args[1]
             assert kwargs == {
                 'reduction_frequency': 0,

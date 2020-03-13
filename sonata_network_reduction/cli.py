@@ -38,27 +38,32 @@ def network(circuit_config_file: str, reduced_network_dir: str, **reduced_kwargs
     context_settings=dict(ignore_unknown_options=True, allow_extra_args=True, )
 )
 @click.argument('node_id', type=click.INT)
-@click.argument('reduced_dir', type=click.Path(file_okay=False))
 @click.argument('node_population_name', type=click.STRING)
 @click.argument('circuit_config_file', type=click.Path(exists=True, dir_okay=False))
+@click.argument('reduced_dir', type=click.Path(file_okay=False), required=False)
 @click.option('--reduction_frequency', required=True, default=0, show_default=True, type=float)
 @click.option('--model_filename', type=str, default='model.hoc')
 @click.option('--total_segments_manual', type=float, default=-1)
 @click.option('--mapping_type', type=str, default='impedance')
 def node(node_id: int,
-         reduced_dir: str,
          node_population_name: str,
          circuit_config_file: str,
+         reduced_dir: str = None,
          **reduced_kwargs):
     """Cli interface to node reduction.
 
     Args:
 
         node_id: node id
-        reduced_dir: path to the dir that would store the reduced node files
         node_population_name: node population name
         circuit_config_file: path to the sonata circuit config file
+        reduced_dir: path to the dir that would store the reduced node files. If not present
+        then the node is reduced inplace.
     """
+    if reduced_dir is None:
+        if not click.confirm('Are you sure you want to reduce the node inplace?', abort=True):
+            return
+    else:
+        reduced_dir = Path(reduced_dir)
     _reduce_node_same_process(
-        node_id, Path(reduced_dir), node_population_name, Path(circuit_config_file),
-        **reduced_kwargs)
+        node_id, node_population_name, Path(circuit_config_file), reduced_dir, **reduced_kwargs)
