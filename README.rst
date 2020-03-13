@@ -4,20 +4,20 @@ Project that allows to apply `neuron_reduce <https://github.com/orena1/neuron_re
 a `Sonata network <https://github.com/AllenInstitute/sonata>`__.
 
 Docker
-------------
+------
 
-The project can be used via docker container. There 2 containers now:
+The project can be used via docker container. There are 2 containers now:
 
-- A general container for any circuit, `make docker_build_general`.
-- A container with precompiled mods for Hippocampus circuits, `make docker_build_hippo`.
+- A general container for any circuit, ``make docker_build_general``.
+- A container with precompiled mods for Hippocampus circuits, ``make docker_build_hippo``.
 
-To prepare one please do in the project's root:
+To prepare one do in the project's root:
 
 .. code:: bash
 
     make docker_build_general
 
-Further you can use a make target again but be sure to check mount points of it:
+Further you can use a make target to run the docker but be sure to check mount points of it:
 
 .. code:: bash
 
@@ -29,22 +29,23 @@ Or do it manually:
 
     docker run -v $HOME:/home/your_mounted_home -it sonata-reduction:<put version here> /bin/bash
 
-After you should end up in `/home/sonata-reduction` of the docker container. Here you should be
-able to run a shell command (see example below). **Don't forget that for a general container,
-you must compile your mods before doing reduction.** Also please don't forget that they must be
-compiled with a relative path. For example, you mount mods directory:
+After you should end up in :file:`/home/sonata-reduction` of the docker container. Here you should
+be able to run a shell command (see an example below). **Don't forget that for a general container,
+you must compile your mods before doing reduction.** Also don't forget that they must be
+compiled with a relative path. For example, you mount your :file:`$HOME/mods` directory to docker's
+:file:`/mods` directory:
 
 .. code:: bash
 
     docker run -v $HOME/mods:/mods -it sonata-reduction:<put version here> /bin/bash
 
-Mods files now are in `/mods`. From `/home/sonata-reduction` you need to:
+Mods files now are in :file:`/mods`. From :file:`/home/sonata-reduction` inside the docker you need to:
 
 .. code:: bash
 
     nrnivmodl ../../mods
 
-After that you should be able to run reduction with your mods from `/home/sonata-reduction`.
+After that you should be able to run reduction with your mods from :file:`/home/sonata-reduction`.
 
 Installation
 ------------
@@ -57,7 +58,8 @@ In a fresh virtualenv:
 
 Usage
 -----
-**Python**
+Python
+~~~~~~
 
 .. code:: python
 
@@ -65,23 +67,27 @@ Usage
 
     reduce_network('/circuit_config_filepath.json', '/reduced_network_dir', reduction_frequency=0)
 
-**Shell**
+Shell
+~~~~~
 
 .. code:: bash
 
     sonata-network-reduction /circuit_config_filepath.json /reduced_network_dir
 
-You can use any of **neuron_reduce** arguments.
+In bash you can use the following ``neuron_reduce`` arguments: ``reduction_frequency``,
+``model_filename``, ``total_segments_manual``, ``mapping_type``. An example:
 
 .. code:: bash
 
     sonata-network-reduction /circuit_config_filepath.json /reduced_network_dir --reduction-frequency 0.5 --total_segments_manual 0.1
 
-As the result ``/reduced_network_dir`` must contain the copy of ``sonata_api``'s sonata network
-where all 'biophysical' neurons are replaced with their reduced versions. That means their
-morphologies are reduced and their edges are updated with new sections ids and positions.
+As the result :file:`/reduced_network_dir` must contain the copy of sonata network by
+:file:`/circuit_config_filepath.json` where all 'biophysical' neurons have been replaced with their
+reduced versions. That means their morphologies have been reduced and their edges are updated with
+new sections ids and positions.
 
-**BB5**
+BB5
+~~~
 There is a corresponding module for using this project on BB5. Please type:
 
 .. code:: bash
@@ -97,7 +103,7 @@ A concrete example for hippocampus circuits:
 .. code:: bash
 
     module load neurodamus-hippocampus/0.4
-    module load py-sonata-network-reduction/0.0.1
+    module load py-sonata-network-reduction/0.0.5
 
 Notes
 -----
