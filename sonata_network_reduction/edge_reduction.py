@@ -130,16 +130,18 @@ def _get_segment_id_and_offset(hsection: h.Section, x: float) -> Tuple[int, floa
 
     Args:
         hsection: NEURON section
-        x: NEURON location as a fraction between 0 and 1.
+        x: location on ``hsection`` as a fraction of its pathlength. A number in the [0, 1]
+        interval.
 
     Returns:
         Segment ID and offset
     """
+    assert 0 <= x <= 1, '`x` must be in the interval [0, 1]'
     section_len = x * hsection.L
     id_ = 0
     offset = 0
     for i in range(hsection.n3d()):
-        if hsection.arc3d(i) > section_len:
+        if hsection.arc3d(i) >= section_len:
             id_ = max(i - 1, id_)
             offset = section_len - hsection.arc3d(id_)
             break
