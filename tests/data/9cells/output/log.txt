@@ -1,2 +1,0 @@
-2019-08-19 11:18:55,403 [INFO] Created log file
-2019-08-19 11:18:55,469 [INFO] Building cells.

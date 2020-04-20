@@ -39,20 +39,20 @@ def test_reduce_node_inplace(circuit_9cells):
         circuit_copy_dirpath = Path(tmp_dirpath) / 'circuit_copy'
         shutil.copytree(str(circuit_config_path.parent), str(circuit_copy_dirpath))
         circuit_copy_config_path = circuit_copy_dirpath / circuit_config_path.name
-        _reduce_node_same_process(0, 'cortex', circuit_copy_config_path, reduction_frequency=0)
+        _reduce_node_same_process(1, 'cortex', circuit_copy_config_path, reduction_frequency=0)
         circuit_copy = Circuit(str(circuit_copy_config_path))
         node_population = circuit_copy.nodes['cortex']
-        reduced_node = node_population.get(0)
-        assert reduced_node['model_template'].endswith('_0')
-        assert reduced_node['morphology'].endswith('_0')
+        reduced_node = node_population.get(1)
+        assert reduced_node['model_template'].endswith('_1')
+        assert reduced_node['morphology'].endswith('_1')
 
         node_copy_sections = _get_node_section_map('cortex', circuit_copy)
-        assert node_copy_sections[0] < original_node_sections[0]
-        for node_id in set(node_population.ids()) - {0}:
+        assert node_copy_sections[1] < original_node_sections[1]
+        for node_id in set(node_population.ids()) - {1}:
             assert original_node_sections[node_id] == node_copy_sections[node_id]
         for edges in circuit_copy.edges.values():
-            assert edges.afferent_edges(0, 'morpho_section_id_post') \
-                .lt(original_node_sections[0]).all()
+            assert edges.afferent_edges(1, 'morpho_section_id_post') \
+                .lt(original_node_sections[1]).all()
 
 
 def test_reduce_network(circuit_9cells):
@@ -166,12 +166,10 @@ def test_save_node(circuit_9cells):
             0, 'cortex', circuit_config_path, tmp_dirpath, reduction_frequency=0)
 
         # node stayed the same except new names for 'model_template' and 'morphology'
-        original_node = circuit.nodes['cortex'].get(0)
         reduced_node = pd.read_json(tmp_dirpath / 'node' / '0.json', typ='series')
         assert reduced_node['morphology'] == 'Scnn1a_473845048_m_0'
         assert reduced_node['model_template'] == 'hoc:Cell_472363762_0'
-        assert original_node.drop(['model_template', 'morphology']) \
-                   .equals(reduced_node.drop(['model_template', 'morphology'])) is True
+        assert sorted(reduced_node.index.tolist()) == sorted(['model_template', 'morphology'])
 
         # edges stayed the same
         edge_populations_names = ['excvirt_cortex', 'inhvirt_cortex']

@@ -98,7 +98,7 @@ def _save_node(node_path: Path, node: pd.Series, node_id: int):
         node_id: node id
     """
     node_path.mkdir(exist_ok=True)
-    node.to_json(node_path / '{}.json'.format(node_id))
+    node[['morphology', 'model_template']].to_json(node_path / '{}.json'.format(node_id))
 
 
 def _save_edges(edges_path: Path, edges: pd.DataFrame):

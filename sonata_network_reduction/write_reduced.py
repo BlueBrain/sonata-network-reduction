@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterable, Dict
 
 import h5py
+import numpy as np
 import pandas as pd
 from bluepysnap import Config
 from bluepysnap.edges import DYNAMICS_PREFIX as EDGES_DYNAMICS_PREFIX
@@ -14,7 +15,7 @@ from bluepysnap.nodes import DYNAMICS_PREFIX as NODES_DYNAMICS_PREFIX
 def _find_node_population_file(population_name: str, circuit_config: Dict):
     for nodes in circuit_config['networks']['nodes']:
         with h5py.File(nodes['nodes_file'], 'r') as h5f:
-            if population_name in h5f['/nodes'].keys():
+            if population_name in h5f['/nodes']:
                 return nodes['nodes_file']
     return None
 
@@ -22,7 +23,7 @@ def _find_node_population_file(population_name: str, circuit_config: Dict):
 def _find_edge_population_file(population_name: str, circuit_config: Dict):
     for edges in circuit_config['networks']['edges']:
         with h5py.File(edges['edges_file'], 'r') as h5f:
-            if population_name in h5f['/edges'].keys():
+            if population_name in h5f['/edges']:
                 return edges['edges_file']
     return None
 
@@ -35,19 +36,38 @@ def _overwrite_nodes(node_paths: Iterable[Path], node_population_name: str, circ
         node_population_name: name of node population
         circuit_config: sonata circuit config
     """
+    # pylint: disable=too-many-locals
     nodes_filepath = _find_node_population_file(node_population_name, circuit_config)
     with h5py.File(nodes_filepath, 'r+') as h5f:
-        nodes_h5ref = h5f['/nodes/{}/0'.format(node_population_name)]
+        nodes_grp = h5f['/nodes/{}/0'.format(node_population_name)]
         for node_path in node_paths:
             node_id = int(node_path.stem)
             with node_path.open() as f:
                 node = json.load(f)
             for name in node.keys():
                 if name.startswith(NODES_DYNAMICS_PREFIX):
+                    # plain dynamics node value
                     h5name = name.split(NODES_DYNAMICS_PREFIX)[1]
-                    nodes_h5ref['dynamics_params/' + h5name][node_id] = node[name]
+                    nodes_grp['dynamics_params/' + h5name][node_id] = node[name]
                 else:
-                    nodes_h5ref[name][node_id] = node[name]
+                    if '@library' in nodes_grp and name in nodes_grp['@library']:
+                        # enum node value
+                        library = nodes_grp['@library']
+                        enum_name_indices = np.argwhere(library[name][:] == node[name])
+                        if len(enum_name_indices) > 0:
+                            nodes_grp[name][node_id] = enum_name_indices[0][0]
+                        else:
+                            enum_values = library[name][:]
+                            enum_dtype = library[name].dtype
+                            del library[name]
+                            new_enum_values = np.append(enum_values, node[name])
+                            library.create_dataset(name, dtype=enum_dtype, data=new_enum_values)
+                            # because we append `node[name]` as the last enum value
+                            enum_name_idx = len(new_enum_values) - 1
+                            nodes_grp[name][node_id] = enum_name_idx
+                    else:
+                        # plain node value
+                        nodes_grp[name][node_id] = node[name]
 
 
 def _overwrite_edges(edges_paths: Iterable[Path], circuit_config: Dict):
@@ -101,7 +121,10 @@ def _overwrite_biophys(biophys_paths: Iterable[Path], circuit_config: Dict):
         shutil.move(str(biophys_path), biophys_dir)
 
 
-def write_reduced_to_circuit(reduced_node_dirpath, circuit_config_file, node_population_name):
+def write_reduced_to_circuit(
+        reduced_node_dirpath: Path,
+        circuit_config_file: Path,
+        node_population_name: str):
     """Updates the circuit_config with the content of reduced node.
 
     Args:
