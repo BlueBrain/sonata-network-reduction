@@ -90,9 +90,9 @@ def instantiate_edges_bglibpy(edges: pd.DataFrame, bglibpy_cell: Cell) -> Tuple[
         syn_description = [
             0,  # 0 mock of `pre_gid`
             edge.delay,  # 1
-            edge.morpho_section_id_post if is_afferent else edge.morpho_section_id_pre,  # 2
-            edge.morpho_segment_id_post if is_afferent else edge.morpho_segment_id_pre,  # 3
-            edge.morpho_offset_segment_post if is_afferent else edge.morpho_offset_segment_pre,  # 4
+            edge.afferent_section_id if is_afferent else edge.efferent_section_id,  # 2
+            edge.afferent_segment_id if is_afferent else edge.efferent_segment_id,  # 3
+            edge.afferent_segment_offset if is_afferent else edge.efferent_segment_offset,  # 4
             None,  # 5
             None,  # 6
             None,  # 7
@@ -171,10 +171,10 @@ def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges:
         segment_id, segment_offset = _get_segment_id_and_offset(sec, seg.x)
         sec_id = morphology.get_section_id(sec)
         edges.at[edge_index,
-                 'morpho_section_id_post' if is_afferent else 'morpho_section_id_pre'] = sec_id
+                 'afferent_section_id' if is_afferent else 'efferent_section_id'] = sec_id
         edges.at[edge_index,
                  'afferent_section_pos' if is_afferent else 'efferent_section_pos'] = seg.x
         edges.at[edge_index,
-                 'morpho_segment_id_post' if is_afferent else 'morpho_segment_id_pre'] = segment_id
-        column = 'morpho_offset_segment_post' if is_afferent else 'morpho_offset_segment_pre'
+                 'afferent_segment_id' if is_afferent else 'efferent_segment_id'] = segment_id
+        column = 'afferent_segment_offset' if is_afferent else 'efferent_segment_offset'
         edges.at[edge_index, column] = segment_offset

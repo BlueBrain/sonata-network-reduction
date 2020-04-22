@@ -51,7 +51,7 @@ def test_reduce_node_inplace(circuit_9cells):
         for node_id in set(node_population.ids()) - {1}:
             assert original_node_sections[node_id] == node_copy_sections[node_id]
         for edges in circuit_copy.edges.values():
-            assert edges.afferent_edges(1, 'morpho_section_id_post') \
+            assert edges.afferent_edges(1, 'afferent_section_id') \
                 .lt(original_node_sections[1]).all()
 
 
@@ -85,7 +85,7 @@ def test_reduce_network(circuit_9cells):
             biophys_class(0, str(morphology_filepath.parent), morphology_filepath.name)
 
             for edge_population in reduced_sonata_circuit.edges.values():
-                edges = edge_population.afferent_edges(node_id, 'morpho_section_id_post')
+                edges = edge_population.afferent_edges(node_id, 'afferent_section_id')
                 assert edges.le(reduced_node_sections[node_id]).all()
 
 

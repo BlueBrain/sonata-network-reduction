@@ -108,3 +108,4 @@ def reduce_network(circuit_config_file: Path, reduced_dir: Path, **reduce_kwargs
     for population in original_circuit.nodes.values():
         reduce_population(population, circuit_config_file, reduced_circuit_config_file,
                           **reduce_kwargs)
+    print('The circuit has been reduced successfully to {}'.format(reduced_dir.absolute()))
