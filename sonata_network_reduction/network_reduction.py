@@ -4,6 +4,7 @@ import traceback
 import warnings
 from functools import partial
 from pathlib import Path
+from subprocess import CalledProcessError
 from tempfile import TemporaryDirectory
 import numpy as np
 
@@ -11,7 +12,6 @@ from bluepysnap.circuit import Circuit
 from bluepysnap.nodes import NodePopulation
 from joblib import Parallel, delayed, parallel_backend
 
-from sonata_network_reduction.exceptions import SonataReductionError
 from sonata_network_reduction.node_reduction import reduce_node
 from sonata_network_reduction.write_reduced import write_reduced_to_circuit
 
@@ -27,11 +27,11 @@ def _get_biophys_node_ids(population: NodePopulation) -> np.array:
     Returns:
         numpy array: node ids that have biophysics
     """
-    biophys_props = {'morphology', 'model_type'}
+    biophys_props = {'morphology', 'model_template'}
     if not biophys_props <= population.property_names:
         return np.empty(shape=0)
     df = population.get(properties=biophys_props)
-    return (df['model_type'] == 'biophysical').index
+    return df.dropna().index
 
 
 def _reduce_node_proxy(
@@ -40,13 +40,14 @@ def _reduce_node_proxy(
         node_population_name: str,
         circuit_config_file: Path,
         **reduce_kwargs):
-    """Proxy for `reduce_node` function that catches all its Exceptions and wraps them into
-    SonataReductionError."""
+    """Proxy for `reduce_node` function that catches all its Exceptions and emits warnings
+    of them."""
     try:
         reduce_node(node_id, node_population_name, circuit_config_file, reduced_dir / str(node_id),
                     **reduce_kwargs)
-    except RuntimeError as e:
-        raise SonataReductionError('reduction of node {} failed'.format(node_id)) from e
+    except (CalledProcessError, RuntimeError):
+        e_text = traceback.format_exc()
+        warnings.warn('reduction of node {} failed:\n{}'.format(node_id, e_text))
 
 
 def reduce_population(
@@ -69,16 +70,12 @@ def reduce_population(
         return
     with parallel_backend('threading'), TemporaryDirectory() as tmp_dirpath:
         tmp_dirpath = Path(tmp_dirpath)
-        try:
-            Parallel()(delayed(partial(
-                _reduce_node_proxy,
-                node_population_name=population.name,
-                circuit_config_file=original_circuit_config_file,
-                reduced_dir=tmp_dirpath,
-                **reduce_kwargs))(id) for id in ids)
-        except SonataReductionError:
-            e_text = traceback.format_exc()
-            warnings.warn(e_text)
+        Parallel()(delayed(partial(
+            _reduce_node_proxy,
+            node_population_name=population.name,
+            circuit_config_file=original_circuit_config_file,
+            reduced_dir=tmp_dirpath,
+            **reduce_kwargs))(id) for id in ids)
         write_reduced_to_circuit(tmp_dirpath, reduced_circuit_config_file, population.name)
 
 

@@ -5,6 +5,7 @@ from typing import Tuple, List, Iterable
 import numpy as np
 
 from aibs_circuit_converter.convert_to_hoc import LOCATION_MAP
+import morphio
 from morphio.mut import Morphology, Section
 from morphio import SectionType, PointLevel, Option
 from neuron import h
@@ -204,6 +205,7 @@ class NeuronMorphology:
             filepath: path to save file
         """
         filepath.parent.mkdir(exist_ok=True)
+        morphio.set_maximum_warnings(0)
         self.morph.write(filepath)
         assert self.is_equal_to(filepath) is True
 
