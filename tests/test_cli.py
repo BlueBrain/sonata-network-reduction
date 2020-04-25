@@ -4,10 +4,9 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from sonata_network_reduction.cli import network, node
+from utils import TEST_DATA_DIR
 
-current_dir = Path(__file__).resolve().parent
-circuit_dir = current_dir / 'data' / '9cells'
-circuit_config_file = circuit_dir / 'bglibpy_circuit_config.json'
+circuit_config_file = TEST_DATA_DIR / '9cells' / 'bglibpy_circuit_config.json'
 
 
 def test_cli_network_default():

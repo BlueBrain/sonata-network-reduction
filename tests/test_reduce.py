@@ -55,7 +55,7 @@ def test_reduce_node_inplace(circuit_9cells):
                 .lt(original_node_sections[1]).all()
 
 
-def test_reduce_network(circuit_9cells):
+def test_reduce_network_success(circuit_9cells):
     _, circuit_config_path, circuit = circuit_9cells
     node_population_name = 'cortex'
     original_node_sections = _get_node_section_map(node_population_name, circuit)
@@ -150,39 +150,3 @@ def test_save_network(circuit_9cells):
         with h5py.File(excvirt_edges_h5) as h5f:
             mocked_pos = h5f['/edges/excvirt_cortex/0/afferent_section_pos'][node_ids].tolist()
             assert mocked_pos == node_ids.tolist()
-
-
-def _subtree_reductor_mock(cell, synapses, netcons, **kwargs):
-    """make reduction a blank operation that just returns the original"""
-    return cell, synapses, netcons
-
-
-@patch('neuron_reduce.subtree_reductor', new=_subtree_reductor_mock)
-def test_save_node(circuit_9cells):
-    _, circuit_config_path, circuit = circuit_9cells
-    with compile_circuit_mod_files(circuit), tempfile.TemporaryDirectory() as tmp_dirpath:
-        tmp_dirpath = Path(tmp_dirpath)
-        _reduce_node_same_process(
-            0, 'cortex', circuit_config_path, tmp_dirpath, reduction_frequency=0)
-
-        # node stayed the same except new names for 'model_template' and 'morphology'
-        reduced_node = pd.read_json(tmp_dirpath / 'node' / '0.json', typ='series')
-        assert reduced_node['morphology'] == 'Scnn1a_473845048_m_0'
-        assert reduced_node['model_template'] == 'hoc:Cell_472363762_0'
-        assert sorted(reduced_node.index.tolist()) == sorted(['model_template', 'morphology'])
-
-        # edges stayed the same
-        edge_populations_names = ['excvirt_cortex', 'inhvirt_cortex']
-        for population_name in edge_populations_names:
-            reduced_edges = pd.read_json(tmp_dirpath / 'edges' / (population_name + '.json'))
-            original_edges = circuit.edges[population_name] \
-                .afferent_edges(0, reduced_edges.columns.values)
-            original_edges.to_json(tmp_dirpath / 'original_{}.json'.format(population_name))
-            assert np.allclose(original_edges.to_numpy(), reduced_edges.to_numpy()) is True
-
-        # morphology stayed the same
-        morph_dirpath = Path(circuit.config['components']['morphologies_dir'])
-        original_morph_file = morph_dirpath / 'Scnn1a_473845048_m.swc'
-        reduced_morph_file = tmp_dirpath / 'morphology' / 'Scnn1a_473845048_m_0.swc'
-        diff_result = diff(original_morph_file, reduced_morph_file)
-        assert not diff_result is True, diff_result.info

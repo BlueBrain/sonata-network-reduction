@@ -5,29 +5,26 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Tuple, List, Dict
 
-from aibs_circuit_converter import convert_to_hoc
 from bglibpy import Cell, RNGSettings
-from bluepyopt.ephys import create_hoc, models
+from bluepyopt.ephys import create_hoc
 from bluepyopt.ephys.locations import NrnSeclistLocation
 from bluepyopt.ephys.mechanisms import NrnMODMechanism
-from bluepyopt.ephys.morphologies import NrnFileMorphology
 from bluepyopt.ephys.parameters import NrnSectionParameter
 from bluepysnap import Circuit
 import pandas as pd
 import neuron_reduce
 import pkg_resources
-import neuron
 from neuron import h
 
-from sonata_network_reduction.edge_reduction import instantiate_edges_bglibpy, get_edges, \
+from sonata_network_reduction.edge_reduction import instantiate_edges, get_edges, \
     update_reduced_edges, EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT
 from sonata_network_reduction import utils
 from sonata_network_reduction.biophysics import get_seclist_nsegs, get_mechs_params
-from sonata_network_reduction.morphology import NeuronMorphology, copy_soma
+from sonata_network_reduction.morphology import copy_soma, ReducedNeuronMorphology
 from sonata_network_reduction.write_reduced import write_reduced_to_circuit
 
 
-def _current_neuron_soma():
+def _current_NRN_soma():
     """Gets soma of currently instantiated neuron in NEURON.
 
     Returns:
@@ -56,7 +53,8 @@ def _to_bluepyopt_format(
     return mechs, params
 
 
-def _save_biophysics(biophys_filepath: Path, morphology: NeuronMorphology, morphology_name: str):
+def _save_biophysics(biophys_filepath: Path, morphology: ReducedNeuronMorphology,
+                     morphology_name: str):
     """Saves biophysics of morphology to a file
 
     Args:
@@ -128,7 +126,7 @@ def _update_reduced_node(node_id: int, node: pd.Series):
     node.at['model_template'] += '_{}'.format(node_id)
 
 
-def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, circuit: Circuit) -> Cell:
+def _instantiate_cell(node_id: int, node: pd.Series, circuit: Circuit) -> Cell:
     """Instantiates bglibpy.Cell for node.
 
     Args:
@@ -150,52 +148,6 @@ def _instantiate_cell_bglibpy(node_id: int, node: pd.Series, circuit: Circuit) -
         extra_values={'holding_current': None, 'threshold_current': None},
         rng_settings=RNGSettings(),
     )
-
-
-def _instantiate_cell_sonata(node_id: int, node: pd.Series, circuit: Circuit) -> models.CellModel:
-    """Deprecated for now. Instantiates node in NEURON with `ephys` module."""
-
-    class _HocCellModel(models.HocCellModel):
-        """ For neurodamus templates. For an example see 'cell_template_neurodamus.jinja2'
-        from BluePyMM."""
-
-        def __init__(self, name, morphology_path, hoc_path=None, hoc_string=None, gid=0):
-            super().__init__(name, morphology_path, hoc_path, hoc_string)
-            self.gid = gid
-
-        def instantiate(self, sim=None):
-            sim.neuron.h.load_file('stdrun.hoc')
-            template_name = self.load_hoc_template(sim, self.hoc_string)
-            morph_path = self.morphology.morphology_path
-            self.cell = getattr(sim.neuron.h, template_name)(
-                self.gid, str(morph_path.parent), morph_path.name)
-            self.icell = self.cell.CellRef
-
-    biophys_filepath = _get_biophys_filepath(node, circuit)
-    morphology_filepath = _get_morphology_filepath(node, circuit)
-    template_name = utils.to_valid_nrn_name(biophys_filepath.stem)
-    if biophys_filepath.suffix == '.nml':
-        biophysics = convert_to_hoc.load_neuroml(str(biophys_filepath))
-        mechanisms = convert_to_hoc.define_mechanisms(biophysics)
-        parameters = convert_to_hoc.define_parameters(biophysics)
-        ephys_cell = models.CellModel(
-            template_name,
-            NrnFileMorphology(str(morphology_filepath)),
-            mechanisms,
-            parameters,
-            node_id
-        )
-    elif biophys_filepath.suffix == '.hoc':
-        ephys_cell = _HocCellModel(
-            template_name,
-            str(morphology_filepath),
-            str(biophys_filepath),
-            gid=node_id
-        )
-    else:
-        raise ValueError('Unsupported biophysics file {}'.format(biophys_filepath))
-    ephys_cell.instantiate(neuron)
-    return ephys_cell
 
 
 def _get_biophys_filepath(node: pd.Series, circuit: Circuit) -> Path:
@@ -243,22 +195,21 @@ def _reduce_node_same_process(
     # pylint: disable=too-many-locals
     circuit = Circuit(str(circuit_config_file))
     node = circuit.nodes[node_population_name].get(node_id)
-    bglibpy_cell = _instantiate_cell_bglibpy(node_id, node, circuit)
+    original_morphology_filepath = _get_morphology_filepath(node, circuit)
+    bglibpy_cell = _instantiate_cell(node_id, node, circuit)
     edges = get_edges(circuit, node_population_name, node_id)
-    synapses, netcons_map = instantiate_edges_bglibpy(edges, bglibpy_cell)
+    synapses, netcons_map = instantiate_edges(edges, bglibpy_cell)
     _, _, reduced_netcons = \
         neuron_reduce.subtree_reductor(
             bglibpy_cell.cell,
             synapses,
             list(netcons_map.values()),
             **reduce_kwargs, )
-
     # 3D is lost after reduction, we need to restore it with h.define_shape()
     h.define_shape()
-    morphology = NeuronMorphology(_current_neuron_soma())
-    # we copy the original soma because NEURON skews soma upon loading. If we don't transfer the
-    # original, the skewed version of the original will be saved.
-    copy_soma(morphology.morph, str(_get_morphology_filepath(node, circuit)))
+    morphology = ReducedNeuronMorphology(_current_NRN_soma())
+    # Soma might be skewed by NEURON upon loading but reduction should not change it.
+    copy_soma(morphology.morph, original_morphology_filepath)
     update_reduced_edges(reduced_netcons, netcons_map, edges, morphology)
     _update_reduced_node(node_id, node)
 
@@ -268,10 +219,11 @@ def _reduce_node_same_process(
         reduced_dir = Path(tmp_dir.name)
     else:
         reduced_dir.mkdir(parents=True, exist_ok=True)
-    morphology_filepath = reduced_dir / 'morphology' / _get_morphology_filepath(node, circuit).name
+    reduced_morphology_filepath = reduced_dir.joinpath(
+        'morphology', _get_morphology_filepath(node, circuit).name)
     biophys_filepath = reduced_dir / 'biophys' / _get_biophys_filepath(node, circuit).name
-    morphology.save(morphology_filepath)
-    _save_biophysics(biophys_filepath, morphology, morphology_filepath.name)
+    morphology.save(reduced_morphology_filepath)
+    _save_biophysics(biophys_filepath, morphology, reduced_morphology_filepath.name)
     _save_node(reduced_dir / 'node', node, node_id)
     _save_edges(reduced_dir / 'edges', edges)
     if inplace:

@@ -33,7 +33,7 @@ setup(
         'bglibpy>=4.2',
         'bluepysnap>=0.3.0',
         'neuron_reduce @ git+https://git@github.com/orena1/neuron_reduce.git@master#egg=neuron_reduce',
-        'morphio>=2.3.4',
+        'morphio>=2.3.9',
         'click>=6.7',
         'aibs-circuit-converter>=0.0.3',
     ],

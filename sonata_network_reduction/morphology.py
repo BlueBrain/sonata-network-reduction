@@ -1,15 +1,14 @@
 """Module that recreates morphology of currently instantiated neuron in NEURON simulator."""
 import re
+import warnings
 from pathlib import Path
 from typing import Tuple, List, Iterable
 import numpy as np
 
 from aibs_circuit_converter.convert_to_hoc import LOCATION_MAP
-import morphio
-from morphio.mut import Morphology, Section
-from morphio import SectionType, PointLevel, Option
+from morphio.mut import Morphology
+from morphio import SectionType, PointLevel
 from neuron import h
-from sonata_network_reduction.exceptions import SonataReductionError
 
 
 def _extract_sec_name_parts(sec_name: str) -> Tuple[str, int]:
@@ -31,12 +30,12 @@ def _extract_sec_name_parts(sec_name: str) -> Tuple[str, int]:
     return seclist_name, sec_index
 
 
-def copy_soma(morph_to: Morphology, morph_file_from: str):
-    """Copies soma from morphology under ``morph_from`` to ``morph_to``.
+def copy_soma(morph_to: Morphology, morph_file_from: Path):
+    """Copies soma from morphology under ``morph_file_from`` to ``morph_to``.
 
     Args:
-        morph_to: instance of Morphology where to copy soma
-        morph_file_from: a path to a morphology file where from copy soma
+        morph_to: instance of Morphology where to copy
+        morph_file_from: a path to a morphology from which to copy
     """
     morph_from = Morphology(morph_file_from)
     morph_to.soma.points = np.copy(morph_from.soma.points)
@@ -78,155 +77,105 @@ def _section_type(h_section: h.Section) -> SectionType:
     return SectionType.undefined
 
 
-def _neuron_order(sections: Iterable[h.Section]) -> List[h.Section]:
+def _neuron_order(h_sections: Iterable[h.Section]) -> List[h.Section]:
     order = {
         SectionType.undefined: 0,
         SectionType.soma: 1,
         SectionType.axon: 2,
         SectionType.basal_dendrite: 3,
         SectionType.apical_dendrite: 4, }
-    return sorted(sections, key=lambda section: order[_section_type(section)])
+    return sorted(h_sections, key=lambda section: order[_section_type(section)])
 
 
-def _h_children(section: h.Section) -> List[h.Section]:
+def _h_children(h_section: h.Section) -> List[h.Section]:
     """get children sections
 
     Args:
-        section: Neuron section
+        h_section: Neuron section
 
     Returns:
         list: List of children sections
     """
     # currently NEURON returns children starting from the last, we need starting from the first
-    return list(reversed(section.children()))
+    return list(reversed(h_section.children()))
 
 
-class NeuronMorphology:
-    """Represents morphology of a neuron in NEURON."""
+class ReducedNeuronMorphology:
+    """Recreates a MorphIO morphology from a reduced neuron in NEURON."""
 
-    def __init__(self, soma: h.Section):
+    def __init__(self, h_soma: h.Section):
         """
         Args:
-            soma: soma of a neuron in NEURON
+            h_soma: soma of the reduced neuron in NEURON
         """
         seclist_names = set(LOCATION_MAP.values()) - {'all'}
         self.section_lists = {seclist_name: [] for seclist_name in seclist_names}
-        self._id_to_h_section = {}
         self._h_section_to_id = {}
-        self._section_id_counter = 0
-        self._put_section(soma)
 
-        soma_sections = [soma]
-        soma_children = _neuron_order(_h_children(soma))
-        while _section_type(soma_children[0]) == SectionType.soma:
-            soma_sections.append(soma_children.pop(0))
-        self.morph = Morphology()
-        self.morph.soma.points = sum([_section_points(sec) for sec in soma_sections], [])
-        self.morph.soma.diameters = sum([_section_diameters(sec) for sec in soma_sections], [])
-        for h_section in soma_children:
-            section = self.morph.append_root_section(
-                PointLevel(
-                    _section_points(h_section),
-                    _section_diameters(h_section)
-                ),
-                _section_type(h_section))
-            self._put_section(h_section)
-            self._create_neurite(section, h_section)
+        self.morph = self._recreate_morphology(h_soma)
 
-    def is_equal_to(self, morphology_filepath: Path) -> bool:
-        """Whether ``self`` is equal to a morphology under ``morphology_filepath``.
+    def _register_h_section(self, morphio_section_id: int, h_section: h.Section):
+        """Maps NEURON section to corresponding Morphio section id
 
-        This method's purpose is to check section indexing of ``self``. You should save ``self`` to
-        a file and compare with it after to verify the same section indexing.
+        Also stores section in corresponding section list
         Args:
-            morphology_filepath: morphology to compare with
+            morphio_section_id: Morphio section id
+            h_section: NEURON section
         """
-        m = Morphology(morphology_filepath, options=Option.nrn_order)
-        for section in m.iter():
-            section_id = section.id + 1  # +1 to account for soma section
-            h_section = self.get_section(section_id)
-            if section.type != _section_type(h_section):
-                return False
-        return True
-
-    def _store_to_section_list(self, h_section: h.Section):
-        """Stores ``h_section`` to its section list"""
+        self._h_section_to_id[h_section] = morphio_section_id
         seclist_name, idx = _extract_sec_name_parts(h_section.name())
         seclist = self.section_lists[seclist_name]
-        if len(seclist) != idx:
-            raise SonataReductionError(
-                'Invalid order of reduced SectionList {}'.format(seclist_name))
+        assert len(seclist) == idx, 'Invalid order of reduced SectionList {}'.format(seclist_name)
         seclist.append(h_section)
 
-    def _put_section(self, h_section: h.Section):
-        """Stores section for later access.
+    def _recreate_morphology(self, h_soma: h.Section) -> Morphology:
+        """Creates Morphio morphology from corresponding NEURON model.
 
         Args:
-            h_section: section instance in NEURON
-        """
-        section_id = self._section_id_counter
-        self._section_id_counter += 1
-        self._id_to_h_section[section_id] = h_section
-        self._h_section_to_id[h_section] = section_id
-        self._store_to_section_list(h_section)
-
-    def _continue_section(self, h_section: h.Section, h_child_section: h.Section):
-        """Continues ``h_section`` with its child ``h_child_section``"""
-        self._h_section_to_id[h_child_section] = self.get_section_id(h_section)
-        self._store_to_section_list(h_child_section)
-
-    def get_section_id(self, h_section: h.Section) -> int:
-        """Id of neuron section.
-
-        Args:
-            h_section: h.Section
+            h_soma: NEURON soma, starting point of NEURON model.
 
         Returns:
-            id
+            Morphology: recreated Morphio morphology
         """
-        return self._h_section_to_id[h_section]
-
-    def get_section(self, section_id: int) -> h.Section:
-        """Section of section id.
-
-        Args:
-            section_id: id
-
-        Returns:
-            h.Section
-        """
-        return self._id_to_h_section[section_id]
+        morph = Morphology()
+        morph.soma.points = _section_points(h_soma)
+        morph.soma.diameters = _section_diameters(h_soma)
+        self._register_h_section(-1, h_soma)  # -1 is for Morphio soma id
+        h_soma_children = _neuron_order(_h_children(h_soma))
+        assert _section_type(h_soma_children[0]) != SectionType.soma, \
+            'Multiple sections soma are invalid'
+        for h_section in h_soma_children:
+            # All neurites except Axon can't have children. Axon is an exception because we deal
+            # with its stub from `replace_axon`. The stub is simple enough hence it is not reduced.
+            # Often the stub is two sections, one attached to another which is an unexpected output
+            # from the neuron_reduce
+            if _section_type(h_section) != SectionType.axon:
+                assert len(_h_children(h_section)) == 0, 'Reduced neurite can\'t have children'
+            section = morph.append_root_section(
+                PointLevel(_section_points(h_section), _section_diameters(h_section)),
+                _section_type(h_section))
+            self._register_h_section(section.id, h_section)
+        with warnings.catch_warnings(record=True) as w:
+            morph.sanitize()
+            assert len(w) == 0, 'Reduced morphology is invalid due to {}'.format(w)
+        return morph
 
     def save(self, filepath: Path):
         """Saves morphology to a file.
 
-        Additionally validates equality of the saved with `self.is_equal_to`.
         Args:
             filepath: path to save file
         """
-        filepath.parent.mkdir(exist_ok=True)
-        morphio.set_maximum_warnings(0)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         self.morph.write(filepath)
-        assert self.is_equal_to(filepath) is True
 
-    def _create_neurite(self, section: Section, h_section: h.Section):
-        """Iterates over section in NEURON and creates its corresponding morphology.
+    def get_section_id(self, h_section: h.Section):
+        """Gets corresponding Morphio section id of NEURON section
 
         Args:
-            section: morphio Section, morphology target.
-            h_section: section in NEURON, morphology source.
+            h_section: NEURON section
+
+        Returns:
+            int: Morphio section id
         """
-        h_children = _h_children(h_section)
-        for h_child_section in h_children:
-            child_section = section.append_section(
-                PointLevel(
-                    _section_points(h_child_section),
-                    _section_diameters(h_child_section),
-                ))
-            if len(h_children) > 1:
-                # we create section only when multiple children because single children will be
-                # merged into parent upon loading and won't have any section id.
-                self._put_section(h_child_section)
-            else:
-                self._continue_section(h_section, h_child_section)
-            self._create_neurite(child_section, h_child_section)
+        return self._h_section_to_id[h_section]

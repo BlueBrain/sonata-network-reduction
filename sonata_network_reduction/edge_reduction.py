@@ -4,11 +4,10 @@ from typing import List, Tuple
 
 import pandas as pd
 from bglibpy import Cell, Synapse
-from bluepyopt.ephys.models import CellModel
 from bluepysnap import Circuit
 from neuron import h
 
-from sonata_network_reduction.morphology import NeuronMorphology
+from sonata_network_reduction.morphology import ReducedNeuronMorphology
 
 EDGES_INDEX_POPULATION = 'population'
 EDGES_INDEX_AFFERENT = 'afferent'
@@ -42,38 +41,7 @@ def get_edges(sonata_circuit: Circuit, node_population_name: str, node_id: int) 
         names=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT, 'idx'])
 
 
-def instantiate_edges_sonata(edges: pd.DataFrame, ephys_cell: CellModel) -> List:
-    """Deprecated for now. Instantiates edges in NEURON.
-
-    Args:
-        edges: edges Dataframe
-        ephys_cell: edges cell as ephys.CellModel
-
-    Returns:
-        list of NEURON synapses corresponding to edges.
-    """
-    # pylint: disable=too-many-locals, import-outside-toplevel
-    from bluepysnap.edges import DYNAMICS_PREFIX
-    morphology = NeuronMorphology(ephys_cell.icell)
-    dynamics_cols_idx = edges.columns.str.startswith(DYNAMICS_PREFIX)
-    synapses = []
-    for i in range(len(edges.index)):
-        edge = edges.iloc[i]
-        synapse_classname = edge['model_template']
-        section_x = edge['afferent_section_pos']
-        section_id = edge['afferent_section_id']
-
-        synapse_class = getattr(h, synapse_classname)
-        section = morphology.get_section(section_id)
-        synapse = synapse_class(section(section_x))
-        edge_dynamics = edge.loc[dynamics_cols_idx]
-        for k, v in edge_dynamics.items():
-            setattr(synapse, k.replace(DYNAMICS_PREFIX, ''), v)
-        synapses.append(synapse)
-    return synapses
-
-
-def instantiate_edges_bglibpy(edges: pd.DataFrame, bglibpy_cell: Cell) -> Tuple[List, OrderedDict]:
+def instantiate_edges(edges: pd.DataFrame, bglibpy_cell: Cell) -> Tuple[List, OrderedDict]:
     """Instantiates edges in NEURON.
 
     Args:
@@ -149,7 +117,7 @@ def _get_segment_id_and_offset(hsection: h.Section, x: float) -> Tuple[int, floa
 
 
 def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges: pd.DataFrame,
-                         morphology: NeuronMorphology):
+                         morphology: ReducedNeuronMorphology):
     """Update edges Dataframe inplace with new reduced properties.
 
     Args:
@@ -169,7 +137,8 @@ def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges:
         seg = syn.get_segment()
         sec = seg.sec
         segment_id, segment_offset = _get_segment_id_and_offset(sec, seg.x)
-        sec_id = morphology.get_section_id(sec)
+        # +1 because Morphio section indexes start from -1 but edges start from 0
+        sec_id = morphology.get_section_id(sec) + 1
         edges.at[edge_index,
                  'afferent_section_id' if is_afferent else 'efferent_section_id'] = sec_id
         edges.at[edge_index,

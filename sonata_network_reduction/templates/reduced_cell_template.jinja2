@@ -108,9 +108,6 @@ proc init(/* args: morphology_dir, morphology_name */) {
 
   geom_nseg()
   indexSections()
-  {%- if replace_axon %}
-    replace_axon()
-  {%- endif %}
   insertChannel()
   biophys()
 {% if nonuniform_params %}
@@ -281,14 +278,6 @@ proc geom_nsec() { local nSec
     nSec += 1
   }
 }
-
-/*
- * Replace the axon built from the original morphology file with a stub axon
- */
-{%- if replace_axon %}
-    {{replace_axon}}
-{%- endif %}
-
 
 {{re_init_rng}}
 
