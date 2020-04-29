@@ -1,4 +1,5 @@
 """Cli module"""
+import logging
 from pathlib import Path
 import click
 
@@ -7,8 +8,13 @@ from sonata_network_reduction.node_reduction import _reduce_node_same_process
 
 
 @click.group()
-def cli():
-    '''The CLI entry point'''
+@click.option('-v', '--verbose', count=True, default=0,
+              help='-v for WARNING, -vv for INFO, -vvv for DEBUG')
+def cli(verbose):
+    """The CLI entry point"""
+    # ERROR level is default to minimize output from neuron_reduce
+    level = (logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG)[min(verbose, 3)]
+    logging.basicConfig(level=level)
 
 
 @cli.command(

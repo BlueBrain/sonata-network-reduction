@@ -11,6 +11,7 @@ import numpy as np
 from bluepysnap.circuit import Circuit
 from bluepysnap.nodes import NodePopulation
 from joblib import Parallel, delayed, parallel_backend
+from tqdm import tqdm
 
 from sonata_network_reduction.node_reduction import reduce_node
 from sonata_network_reduction.write_reduced import write_reduced_to_circuit
@@ -75,7 +76,7 @@ def reduce_population(
             node_population_name=population.name,
             circuit_config_file=original_circuit_config_file,
             reduced_dir=tmp_dirpath,
-            **reduce_kwargs))(id) for id in ids)
+            **reduce_kwargs))(id) for id in tqdm(ids))
         write_reduced_to_circuit(tmp_dirpath, reduced_circuit_config_file, population.name)
 
 
@@ -105,4 +106,3 @@ def reduce_network(circuit_config_file: Path, reduced_dir: Path, **reduce_kwargs
     for population in original_circuit.nodes.values():
         reduce_population(population, circuit_config_file, reduced_circuit_config_file,
                           **reduce_kwargs)
-    print('The circuit has been reduced successfully to {}'.format(reduced_dir.absolute()))

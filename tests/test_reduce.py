@@ -5,12 +5,10 @@ from unittest.mock import patch
 import warnings
 
 import h5py
-import numpy as np
 import pandas as pd
 
 import neurom
 from bluepysnap import Circuit
-from morph_tool import diff
 from neuron import h
 
 from sonata_network_reduction.network_reduction import reduce_network

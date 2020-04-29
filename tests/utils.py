@@ -1,4 +1,5 @@
 import os
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,8 @@ import pytest
 from bluepysnap import Circuit
 from neuron import h
 
+os.environ.setdefault('LOGLEVEL', 'DEBUG')
+logging.basicConfig(level=os.environ.get('LOGLEVEL'))
 TEST_DATA_DIR = Path(__file__).resolve().parent / 'data'
 
 
