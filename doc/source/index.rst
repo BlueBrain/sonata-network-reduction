@@ -6,3 +6,4 @@
 
    Home <self>
    api
+   changelog

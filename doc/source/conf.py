@@ -162,7 +162,7 @@ autodoc_default_options = {"members": True}
 
 # autosummary settings
 autosummary_generate = True
-autosummary_mock_imports = ['neuron']
+autosummary_mock_imports = ['neuron', 'bglibpy']
 
 # -- Options for LaTeX output --------------------------------------------------
 

@@ -11,7 +11,7 @@ the circuit for simplification must be self-contained, which means:
 
 - The circuit's :file:`config.json` must not contain absolute filepaths.
 - The circuit's :file:`config.json` must be in a folder that contains all the circuit's parts. No
-circuit's parts can be outside of this folder.
+  circuit's parts can be outside of this folder.
 
 Install
 -------
