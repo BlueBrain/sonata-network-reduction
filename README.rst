@@ -44,9 +44,9 @@ Or do it manually:
 
 After that your shell changes directory to :file:`/home/sonata-reduction` of the docker container.
 Here you should be able to run a shell command (see an example below). **Don't forget that for a
-general container, you must compile your ``.mod`` mechanism files before doing reduction.** Also
-don't forget that they must be compiled with a relative path. For example, you mount your
-:file:`$HOME/mods` directory to docker's :file:`/mods` directory:
+general container, you must compile your ``.mod`` mechanism files before doing reduction.** If you
+have problems with compiling of ``.mod``, you might try to compile them with a relative path.
+For example, you mount your :file:`$HOME/mods` directory to docker's :file:`/mods` directory:
 
 .. code:: bash
 
@@ -56,7 +56,8 @@ Mods files now are in :file:`/mods`. From :file:`/home/sonata-reduction` inside 
 
 .. code:: bash
 
-    nrnivmodl ../../mods
+    nrnivmodl ../../mods # relative path variant
+    nrnivmodl /mods      # absolute path variant
 
 After that you should be able to run reduction with your mods from :file:`/home/sonata-reduction`.
 
