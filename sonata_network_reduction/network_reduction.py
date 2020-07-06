@@ -3,6 +3,7 @@ import shutil
 import traceback
 import warnings
 from functools import partial
+from multiprocessing import Value
 from pathlib import Path
 from subprocess import CalledProcessError
 from tempfile import TemporaryDirectory
@@ -13,6 +14,7 @@ from bluepysnap.nodes import NodePopulation
 from joblib import Parallel, delayed, parallel_backend
 from tqdm import tqdm
 
+from sonata_network_reduction.exceptions import ReductionError
 from sonata_network_reduction.node_reduction import reduce_node
 from sonata_network_reduction.write_reduced import write_reduced_to_circuit
 
@@ -40,15 +42,20 @@ def _reduce_node_proxy(
         reduced_dir: Path,
         node_population_name: str,
         circuit_config_file: Path,
+        failed_nodes_counter: Value,
         **reduce_kwargs):
     """Proxy for `reduce_node` function that catches all its Exceptions and emits warnings
     of them."""
     try:
         reduce_node(node_id, node_population_name, circuit_config_file, reduced_dir / str(node_id),
                     **reduce_kwargs)
-    except (CalledProcessError, RuntimeError):
+    except (CalledProcessError, RuntimeError) as e:
         e_text = traceback.format_exc()
         warnings.warn('reduction of node {} failed:\n{}'.format(node_id, e_text))
+        with failed_nodes_counter.get_lock():
+            failed_nodes_counter.value -= 1
+            if failed_nodes_counter.value == 0:
+                raise ReductionError('Reached max number of failed reduced nodes. Aborting.') from e
 
 
 def reduce_population(
@@ -69,6 +76,7 @@ def reduce_population(
     if len(ids) == 0:
         warnings.warn('No biophys nodes in "{}" population. Is it virtual?'.format(population.name))
         return
+    failed_nodes_counter = Value('i', 5)
     with parallel_backend('threading'), TemporaryDirectory() as tmp_dirpath:
         tmp_dirpath = Path(tmp_dirpath)
         Parallel()(delayed(partial(
@@ -76,6 +84,7 @@ def reduce_population(
             node_population_name=population.name,
             circuit_config_file=original_circuit_config_file,
             reduced_dir=tmp_dirpath,
+            failed_nodes_counter=failed_nodes_counter,
             **reduce_kwargs))(id) for id in tqdm(ids))
         write_reduced_to_circuit(tmp_dirpath, reduced_circuit_config_file, population.name)
 

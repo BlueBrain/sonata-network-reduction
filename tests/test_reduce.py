@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 import warnings
-
 import h5py
 import pandas as pd
 
@@ -11,6 +10,9 @@ import neurom
 from bluepysnap import Circuit
 from neuron import h
 
+import pytest
+
+from sonata_network_reduction.exceptions import ReductionError
 from sonata_network_reduction.network_reduction import reduce_network
 from sonata_network_reduction.node_reduction import _reduce_node_same_process, \
     _get_biophys_filepath, _get_morphology_filepath
@@ -102,6 +104,19 @@ def test_reduce_network_failed_node(circuit_9cells):
         assert len(w) == 1
         message = str(w[0].message)
         assert 'dummy' in message and 'reduction of node 7 failed' in message
+
+
+def _reduce_node_failed_mock(
+        node_id, node_population_name, circuit_config_file, reduced_dir, **reduce_kwargs):
+    raise RuntimeError('dummy')
+
+
+@patch('sonata_network_reduction.network_reduction.reduce_node', new=_reduce_node_failed_mock)
+def test_reduce_network_abort(circuit_9cells):
+    _, circuit_config_path, _ = circuit_9cells
+    with tempfile.TemporaryDirectory() as tmp_dirpath, pytest.raises(ReductionError) as e:
+        reduce_network(circuit_config_path, Path(tmp_dirpath) / 'reduced', reduction_frequency=0)
+    assert 'Reached max number of failed reduced nodes' in e.value.args[0]
 
 
 def _reduce_node_mock(
