@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Version 0.0.9
+-------------
+
+- Changed error handling. Now the reduction of a network population fails if more than 5 of its nodes fail.
+- Added circuit validation before starting the reduction.
+
 Version 0.0.8
 -------------
 
