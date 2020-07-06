@@ -17,7 +17,7 @@ import pkg_resources
 from neuron import h
 
 from sonata_network_reduction.edge_reduction import instantiate_edges, get_edges, \
-    update_reduced_edges, EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT
+    update_reduced_edges, save_edges
 from sonata_network_reduction import utils
 from sonata_network_reduction.biophysics import get_seclist_nsegs, get_mechs_params
 from sonata_network_reduction.morphology import copy_soma, ReducedNeuronMorphology
@@ -97,22 +97,6 @@ def _save_node(node_path: Path, node: pd.Series, node_id: int):
     """
     node_path.mkdir(exist_ok=True)
     node[['morphology', 'model_template']].to_json(node_path / '{}.json'.format(node_id))
-
-
-def _save_edges(edges_path: Path, edges: pd.DataFrame):
-    """Saves edges to `<edge_population_name>.json` files in `edges_path`.
-
-    Args:
-        edges_path: dir where to save
-        edges: edges to save
-    """
-    edges_path.mkdir(exist_ok=True)
-    for grp_index, grp_edges in edges.groupby(
-            level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT]):
-        grp_edges.reset_index(
-            level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT], drop=True, inplace=True)
-        population_name = grp_index[0]
-        grp_edges.to_json(edges_path / (population_name + '.json'))
 
 
 def _update_reduced_node(node_id: int, node: pd.Series):
@@ -225,7 +209,7 @@ def _reduce_node_same_process(
     morphology.save(reduced_morphology_filepath)
     _save_biophysics(biophys_filepath, morphology, reduced_morphology_filepath.name)
     _save_node(reduced_dir / 'node', node, node_id)
-    _save_edges(reduced_dir / 'edges', edges)
+    save_edges(reduced_dir / 'edges', edges)
     if inplace:
         utils.close_sonata_circuit(circuit)
         write_reduced_to_circuit(reduced_dir, circuit_config_file, node_population_name)

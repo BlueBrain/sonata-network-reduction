@@ -1,4 +1,5 @@
 """Module that is responsible for single node reduction."""
+from pathlib import Path
 from collections import OrderedDict
 from typing import List, Tuple
 
@@ -147,3 +148,24 @@ def update_reduced_edges(reduced_netcons: List, netcons_map: OrderedDict, edges:
                  'afferent_segment_id' if is_afferent else 'efferent_segment_id'] = segment_id
         column = 'afferent_segment_offset' if is_afferent else 'efferent_segment_offset'
         edges.at[edge_index, column] = segment_offset
+
+
+def save_edges(edges_path: Path, edges: pd.DataFrame):
+    """Saves edges to `<edge_population_name>.json` files in `edges_path`.
+
+    Args:
+        edges_path: dir where to save
+        edges: edges to save
+    """
+    edges_path.mkdir(exist_ok=True)
+    saved_columns = ['afferent_section_id', 'afferent_section_pos',
+                     'afferent_segment_id', 'afferent_segment_offset',
+                     'efferent_section_id', 'efferent_section_pos',
+                     'efferent_segment_id', 'efferent_segment_offset']
+    edges = edges.loc[:, edges.columns.isin(saved_columns)]
+    for grp_index, grp_edges in edges.groupby(
+            level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT]):
+        grp_edges.reset_index(
+            level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT], drop=True, inplace=True)
+        population_name = grp_index[0]
+        grp_edges.to_json(edges_path / (population_name + '.json'))

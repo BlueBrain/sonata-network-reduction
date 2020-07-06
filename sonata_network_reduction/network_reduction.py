@@ -11,6 +11,7 @@ import numpy as np
 
 from bluepysnap.circuit import Circuit
 from bluepysnap.nodes import NodePopulation
+from bluepysnap import circuit_validation
 from joblib import Parallel, delayed, parallel_backend
 from tqdm import tqdm
 
@@ -103,6 +104,11 @@ def reduce_network(circuit_config_file: Path, reduced_dir: Path, **reduce_kwargs
     """
     if reduced_dir.exists():
         raise ValueError('{} must not exist. Please delete it.'.format(reduced_dir))
+    errors = circuit_validation.validate(str(circuit_config_file), True)
+    errors = [err for err in errors if err.level == circuit_validation.Error.FATAL]
+    if len(errors) > 0:
+        raise ReductionError(
+            f'{circuit_config_file} is invalid SONATA circuit. Fix the below errors\n: {errors}')
     original_circuit = Circuit(str(circuit_config_file))
     # don't copy morphologies and biophysics dir as they can be quite huge
     ignore_dirs = (

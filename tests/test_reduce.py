@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from distutils.dir_util import copy_tree
 from pathlib import Path
 from unittest.mock import patch
 import warnings
@@ -7,7 +8,7 @@ import h5py
 import pandas as pd
 
 import neurom
-from bluepysnap import Circuit
+from bluepysnap import Circuit, Config
 from neuron import h
 
 import pytest
@@ -163,3 +164,18 @@ def test_save_network(circuit_9cells):
         with h5py.File(excvirt_edges_h5) as h5f:
             mocked_pos = h5f['/edges/excvirt_cortex/0/afferent_section_pos'][node_ids].tolist()
             assert mocked_pos == node_ids.tolist()
+
+
+def test_reduce_network_failed_validation(circuit_9cells):
+    circuit_path, circuit_config_path, circuit = circuit_9cells
+    with tempfile.TemporaryDirectory() as circuit_copy_path:
+        copy_tree(str(circuit_path), circuit_copy_path)
+        circuit_copy_config_path = Path(circuit_copy_path) / circuit_config_path.name
+        copy_config = Config(circuit_copy_config_path).resolve()
+        with h5py.File(copy_config['networks']['nodes'][0]['nodes_file'], 'r+') as h5f:
+            del h5f['/nodes/cortex/node_type_id']
+        with compile_circuit_mod_files(circuit), tempfile.TemporaryDirectory() as tmp_dirpath, \
+                pytest.raises(ReductionError) as e:
+            tmp_dirpath = Path(tmp_dirpath) / 'reduced'
+            reduce_network(circuit_copy_config_path, tmp_dirpath, reduction_frequency=0)
+            assert f'{circuit_copy_config_path} is invalid SONATA circuit' in e.value.args[0]
