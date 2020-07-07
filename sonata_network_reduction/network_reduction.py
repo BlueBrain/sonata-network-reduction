@@ -108,7 +108,7 @@ def reduce_network(circuit_config_file: Path, reduced_dir: Path, **reduce_kwargs
     errors = [err for err in errors if err.level == circuit_validation.Error.FATAL]
     if len(errors) > 0:
         raise ReductionError(
-            f'{circuit_config_file} is invalid SONATA circuit. Fix the below errors\n: {errors}')
+            f'{circuit_config_file} is invalid SONATA circuit. Fix FATAL errors above.')
     original_circuit = Circuit(str(circuit_config_file))
     # don't copy morphologies and biophysics dir as they can be quite huge
     ignore_dirs = (
