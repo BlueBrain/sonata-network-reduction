@@ -31,7 +31,7 @@ setup(
         'joblib>=0.14',
         'bluepyopt>=1.8.68',
         'bglibpy>=4.2',
-        'bluepysnap>=0.5.1',
+        'bluepysnap>=0.5.2',
         'neuron_reduce @ git+https://git@github.com/orena1/neuron_reduce.git@master#egg=neuron_reduce',
         'morphio>=2.3.9',
         'click>=6.7',
