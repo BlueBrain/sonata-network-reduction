@@ -13,25 +13,25 @@
   "networks": {
     "nodes": [
       {
-        "nodes_file": "$NETWORK_DIR/bglibpy/nodes/cortex.h5",
+        "nodes_file": "$NETWORK_DIR/nodes/cortex.h5",
         "node_types_file": null
       },
       {
-        "nodes_file": "$NETWORK_DIR/sonata/excvirt_nodes.h5",
-        "node_types_file": "$NETWORK_DIR/sonata/excvirt_node_types.csv"
+        "nodes_file": "$NETWORK_DIR/nodes/excvirt_nodes.h5",
+        "node_types_file": null
       },
       {
-        "nodes_file": "$NETWORK_DIR/sonata/inhvirt_nodes.h5",
-        "node_types_file": "$NETWORK_DIR/sonata/inhvirt_node_types.csv"
+        "nodes_file": "$NETWORK_DIR/nodes/inhvirt_nodes.h5",
+        "node_types_file": null
       }
     ],
     "edges": [
       {
-        "edges_file": "$NETWORK_DIR/bglibpy/edges/excvirt_cortex.h5",
+        "edges_file": "$NETWORK_DIR/edges/excvirt_cortex.h5",
         "edge_types_file": null
       },
       {
-        "edges_file": "$NETWORK_DIR/bglibpy/edges/inhvirt_cortex.h5",
+        "edges_file": "$NETWORK_DIR/edges/inhvirt_cortex.h5",
         "edge_types_file": null
       }
     ]

@@ -6,7 +6,6 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-import pytest
 from bluepysnap import Circuit
 from neuron import h
 
@@ -15,10 +14,9 @@ logging.basicConfig(level=os.environ.get('LOGLEVEL'))
 TEST_DATA_DIR = Path(__file__).resolve().parent / 'data'
 
 
-@pytest.fixture(scope="module")
 def circuit_9cells():
     circuit_path = TEST_DATA_DIR / '9cells'
-    circuit_config_path = circuit_path / 'bglibpy_circuit_config.json'
+    circuit_config_path = circuit_path / 'circuit_config.json'
     return circuit_path, circuit_config_path, Circuit(str(circuit_config_path))
 
 

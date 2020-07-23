@@ -4,12 +4,11 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from sonata_network_reduction.cli import network, node
-from utils import TEST_DATA_DIR
-
-circuit_config_file = TEST_DATA_DIR / '9cells' / 'bglibpy_circuit_config.json'
+from utils import circuit_9cells
 
 
 def test_cli_network_default():
+    _, circuit_config_file, _ = circuit_9cells()
     with tempfile.TemporaryDirectory() as tmpdirname:
         with patch('sonata_network_reduction.cli.reduce_network') as reduce_network_mock:
             reduce_network_mock.return_value = 0
@@ -29,6 +28,7 @@ def test_cli_network_default():
 
 
 def test_cli_network_kwargs():
+    _, circuit_config_file, _ = circuit_9cells()
     with tempfile.TemporaryDirectory() as tmpdirname:
         with patch('sonata_network_reduction.cli.reduce_network') as reduce_network_mock:
             reduce_network_mock.return_value = 0
@@ -49,6 +49,7 @@ def test_cli_network_kwargs():
 
 
 def test_cli_node():
+    _, circuit_config_file, _ = circuit_9cells()
     with tempfile.TemporaryDirectory() as tmpdirname:
         with patch('sonata_network_reduction.cli._reduce_node_same_process') as reduce_node_mock:
             reduce_node_mock.return_value = 0
@@ -68,6 +69,7 @@ def test_cli_node():
 
 
 def test_cli_node_inplace():
+    _, circuit_config_file, _ = circuit_9cells()
     with tempfile.TemporaryDirectory():
         with patch('sonata_network_reduction.cli._reduce_node_same_process') as reduce_node_mock:
             reduce_node_mock.return_value = 0

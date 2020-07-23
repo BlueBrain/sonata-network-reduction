@@ -32,8 +32,8 @@ def _get_node_section_map(node_population_name, sonata_circuit):
     return node_section_map
 
 
-def test_reduce_node_inplace(circuit_9cells):
-    _, circuit_config_path, circuit = circuit_9cells
+def test_reduce_node_inplace():
+    _, circuit_config_path, circuit = circuit_9cells()
     original_node_sections = _get_node_section_map('cortex', circuit)
 
     with compile_circuit_mod_files(circuit), tempfile.TemporaryDirectory() as tmp_dirpath:
@@ -56,8 +56,8 @@ def test_reduce_node_inplace(circuit_9cells):
                 .lt(original_node_sections[1]).all()
 
 
-def test_reduce_network_success(circuit_9cells):
-    _, circuit_config_path, circuit = circuit_9cells
+def test_reduce_network_success():
+    _, circuit_config_path, circuit = circuit_9cells()
     node_population_name = 'cortex'
     original_node_sections = _get_node_section_map(node_population_name, circuit)
 
@@ -97,8 +97,8 @@ def _reduce_node_failed_mock(
 
 
 @patch('sonata_network_reduction.network_reduction.reduce_node', new=_reduce_node_failed_mock)
-def test_reduce_network_failed_node(circuit_9cells):
-    _, circuit_config_path, _ = circuit_9cells
+def test_reduce_network_failed_node():
+    _, circuit_config_path, _ = circuit_9cells()
     with warnings.catch_warnings(record=True) as w, tempfile.TemporaryDirectory() as tmp_dirpath:
         warnings.filterwarnings('ignore', 'No biophys nodes*')
         reduce_network(circuit_config_path, Path(tmp_dirpath) / 'reduced', reduction_frequency=0)
@@ -113,8 +113,8 @@ def _reduce_node_failed_mock(
 
 
 @patch('sonata_network_reduction.network_reduction.reduce_node', new=_reduce_node_failed_mock)
-def test_reduce_network_abort(circuit_9cells):
-    _, circuit_config_path, _ = circuit_9cells
+def test_reduce_network_abort():
+    _, circuit_config_path, _ = circuit_9cells()
     with tempfile.TemporaryDirectory() as tmp_dirpath, pytest.raises(ReductionError) as e:
         reduce_network(circuit_config_path, Path(tmp_dirpath) / 'reduced', reduction_frequency=0)
     assert 'Reached max number of failed reduced nodes' in e.value.args[0]
@@ -143,8 +143,8 @@ def _reduce_node_mock(
 
 
 @patch('sonata_network_reduction.network_reduction.reduce_node', new=_reduce_node_mock)
-def test_save_network(circuit_9cells):
-    _, circuit_config_path, _ = circuit_9cells
+def test_save_network():
+    _, circuit_config_path, _ = circuit_9cells()
     with tempfile.TemporaryDirectory() as tmp_dirpath:
         tmp_dirpath = Path(tmp_dirpath) / 'reduced'
         reduce_network(circuit_config_path, tmp_dirpath, reduction_frequency=0)
@@ -166,8 +166,8 @@ def test_save_network(circuit_9cells):
             assert mocked_pos == node_ids.tolist()
 
 
-def test_reduce_network_failed_validation(circuit_9cells):
-    circuit_path, circuit_config_path, circuit = circuit_9cells
+def test_reduce_network_failed_validation():
+    circuit_path, circuit_config_path, circuit = circuit_9cells()
     with tempfile.TemporaryDirectory() as circuit_copy_path:
         copy_tree(str(circuit_path), circuit_copy_path)
         circuit_copy_config_path = Path(circuit_copy_path) / circuit_config_path.name
