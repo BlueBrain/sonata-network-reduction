@@ -91,10 +91,10 @@ def reduce_population(
 
 
 def reduce_network(circuit_config_file: Path, reduced_dir: Path, **reduce_kwargs):
-    """ Reduces the network represented by ``circuit_config_filepath`` param.
+    """ Reduces the network represented by ``circuit_config_file`` param.
 
-    Assumed that the circuit is represented by the parent directory of ``circuit_config_filepath``.
-    The reduced network is saved to ``out_circuit_dir``.
+    Assumed that the circuit is represented by the parent directory of ``circuit_config_file``.
+    The reduced network is saved to ``reduced_dir``.
 
     Args:
         circuit_config_file: path to Sonata circuit config file
