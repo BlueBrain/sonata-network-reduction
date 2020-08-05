@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Version 0.0.10
+--------------
+
+- Fixed edges reduction when some sonata attributes are not presented at all. Solves the problem
+    of projections edges which don't have 'efferent' attributes.
+
+- Fixed BGLibPy==4.3.3 dependency update
+
 Version 0.0.9
 -------------
 

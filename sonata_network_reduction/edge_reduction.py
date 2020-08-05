@@ -75,6 +75,8 @@ def instantiate_edges(edges: pd.DataFrame, bglibpy_cell: Cell) -> Tuple[List, Or
             None,  # 15
             None,  # 16
             edge.n_rrp_vesicles,  # 17
+            None,  # 18 u_hill_coefficient
+            None,  # 19 conductance_ratio
         ]
         location = bglibpy_cell.synlocation_to_segx(
             syn_description[2], syn_description[3], syn_description[4])
@@ -163,9 +165,9 @@ def save_edges(edges_path: Path, edges: pd.DataFrame):
                      'efferent_section_id', 'efferent_section_pos',
                      'efferent_segment_id', 'efferent_segment_offset']
     edges = edges.loc[:, edges.columns.isin(saved_columns)]
-    for grp_index, grp_edges in edges.groupby(
+    for (edges_pop_name, _), edges_pop_df in edges.groupby(
             level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT]):
-        grp_edges.reset_index(
-            level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT], drop=True, inplace=True)
-        population_name = grp_index[0]
-        grp_edges.to_json(edges_path / (population_name + '.json'))
+        edges_pop_df = edges_pop_df. \
+            reset_index(level=[EDGES_INDEX_POPULATION, EDGES_INDEX_AFFERENT], drop=True). \
+            dropna(axis=1, how='all')
+        edges_pop_df.to_json(edges_path / (edges_pop_name + '.json'))
