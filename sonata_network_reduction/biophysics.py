@@ -2,12 +2,19 @@
 Util module for extraction of biophysics from given NEURON sections.
 """
 import warnings
-from collections import defaultdict
 from typing import Iterable, List, Tuple, Dict, Generator
 import itertools
-
+from pathlib import Path
+import pkg_resources
 import numpy as np
+
+from bluepyopt.ephys import create_hoc
+from bluepyopt.ephys.locations import NrnSeclistLocation
+from bluepyopt.ephys.mechanisms import NrnMODMechanism
+from bluepyopt.ephys.parameters import NrnSectionParameter
 from neuron import h
+
+from sonata_network_reduction import utils
 
 
 def _get_nmodl_param_names(mech_name: str) -> List[str]:
@@ -126,46 +133,94 @@ def _separate_params(
     return uniform_params, nonuniform_params
 
 
-def get_mechs_params(seclists: Dict[str, h.Section]) \
-        -> Tuple[Dict[str, List], Dict[str, Dict[str, float]], Dict[str, Dict[str, List]]]:
-    """Gets all mechanisms and parameters of section lists.
-
-    Args:
-        seclists: dict of sections per seclist
-
-    Returns:
-        Tuple of mechanisms, uniform parameters and nonuniform parameters.
-        Mechanisms are represented as a dict of mechanism names per section list.
-        Uniform parameters is a dict of: seclist name -> dict of param value per param name.
-        Nonuniform parameters is a dict of: seclist name -> dict of param values list per param name
-    """
-    mech_names = {}
-    uniform_params = {}
-    nonuniform_params = {}
-    for seclist_name, seclist in seclists.items():
-        if len(seclist) == 0:
-            continue
-        seclist_mech_names, seclist_params = _get_sec_mechs_params(seclist[0])
-        seclist_uniform_params, seclist_nonuniform_params = _separate_params(
-            seclist, seclist_params, seclist_mech_names)
-        if seclist_nonuniform_params:
-            nonuniform_params[seclist_name] = seclist_nonuniform_params
-        mech_names[seclist_name] = seclist_mech_names
-        uniform_params[seclist_name] = seclist_uniform_params
-    return mech_names, uniform_params, nonuniform_params
+def _to_bluepyopt_format(mech_names: Dict[str, List], uniform_params: Dict[str, Dict[str, float]]) \
+        -> Tuple[List[NrnMODMechanism], List[NrnSectionParameter]]:
+    mechs = []
+    params = []
+    for seclist_name in mech_names.keys():
+        loc = NrnSeclistLocation(seclist_name, seclist_name)
+        mechs += [NrnMODMechanism(mech_name, suffix=mech_name, locations=[loc])
+                  for mech_name in mech_names[seclist_name]]
+        params += [NrnSectionParameter(
+            param_name, param_value, True, param_name=param_name, locations=[loc])
+            for param_name, param_value in uniform_params[seclist_name].items()]
+    return mechs, params
 
 
-def get_seclist_nsegs(seclists: Dict[str, h.Section]) -> Dict[str, List]:
-    """Gets number of nsegs per seclist.
+class Biophysics:
+    """Representation of biophysical model template"""
 
-    Args:
-        seclists: dict of sections per seclist
+    def __init__(self,
+                 mech_names: Dict[str, List],
+                 uniform_params: Dict[str, Dict[str, float]],
+                 nonuniform_params: Dict[str, Dict[str, List]],
+                 nsegs: Dict[str, List]):
+        """Constructor
 
-    Returns:
-        Dict of sections nsegs per seclist. It replaces each section of ``seclists`` with its nseg.
-    """
-    seclist_nsegs = defaultdict(list)
-    for seclist_name, seclist in seclists.items():
-        for sec in seclist:
-            seclist_nsegs[seclist_name].append(sec.nseg)
-    return dict(seclist_nsegs)
+        Args:
+            mech_names: dict of mechanism names per section list
+            uniform_params: dict of <section list name>: <dict of <param name: param value>>
+                params that are uniform across a section list
+            nonuniform_params: dict of <section list name>: <dict of <param name: param value list>>
+                params that are not uniform across a section list
+            nsegs: dict of <section list name>: <list of nseg values for each section of the list>
+                ``nseg`` value of each section in section list
+        """
+        self._mech_names = mech_names
+        self._uniform_params = uniform_params
+        self._nonuniform_params = nonuniform_params
+        self._nsegs = nsegs
+
+    @classmethod
+    def from_nrn(cls, section_lists: Dict[str, h.Section]):
+        """Creates an instance from section lists of a neuron
+
+        Args:
+            section_lists: dict of sections per section list name
+
+        Returns:
+            Biophysics: an instance of Biophysics
+        """
+        mech_names, uniform_params, nonuniform_params, nsegs = {}, {}, {}, {}
+        for seclist_name, seclist in section_lists.items():
+            if len(seclist) == 0:
+                continue
+            seclist_mech_names, seclist_params = _get_sec_mechs_params(seclist[0])
+            seclist_uniform_params, seclist_nonuniform_params = _separate_params(
+                seclist, seclist_params, seclist_mech_names)
+            if seclist_nonuniform_params:
+                nonuniform_params[seclist_name] = seclist_nonuniform_params
+            mech_names[seclist_name] = seclist_mech_names
+            uniform_params[seclist_name] = seclist_uniform_params
+            nsegs[seclist_name] = [sec.nseg for sec in seclist]
+        return cls(mech_names, uniform_params, nonuniform_params, nsegs)
+
+    def save(self, biophys_filepath: Path, default_morphology_name: str):
+        """Saves as a hoc template.
+
+        Args:
+            biophys_filepath: path where to save
+            default_morphology_name: default morphology name to use in the saved hoc template.
+                Required by our hoc templates. You can use empty string if you want.
+        """
+        biophys_filepath.parent.mkdir(exist_ok=True)
+        mechs, uniform_params = _to_bluepyopt_format(self._mech_names, self._uniform_params)
+        nonuniform_param_names = set(itertools.chain(*self._nonuniform_params.values()))
+        template_filepath = pkg_resources.resource_filename(
+            __name__, 'templates/reduced_cell_template.jinja2')
+        biophysics = create_hoc.create_hoc(
+            mechs=mechs,
+            parameters=uniform_params,
+            morphology=default_morphology_name,
+            replace_axon='',
+            template_name=utils.to_valid_nrn_name(biophys_filepath.stem),
+            template_filename=template_filepath,
+            template_dir='',
+            custom_jinja_params={
+                'nsegs_map': self._nsegs,
+                'nonuniform_params': self._nonuniform_params,
+                'nonuniform_param_names': nonuniform_param_names,
+            },
+        )
+        with biophys_filepath.open('w') as f:
+            f.write(biophysics)

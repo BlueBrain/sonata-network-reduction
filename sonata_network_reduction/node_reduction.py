@@ -3,23 +3,17 @@ import itertools
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Tuple, List, Dict
 
 from bglibpy import Cell, RNGSettings
-from bluepyopt.ephys import create_hoc
-from bluepyopt.ephys.locations import NrnSeclistLocation
-from bluepyopt.ephys.mechanisms import NrnMODMechanism
-from bluepyopt.ephys.parameters import NrnSectionParameter
 from bluepysnap import Circuit
 import pandas as pd
 import neuron_reduce
-import pkg_resources
 from neuron import h
 
 from sonata_network_reduction.edge_reduction import instantiate_edges, get_edges, \
     update_reduced_edges, save_edges
 from sonata_network_reduction import utils
-from sonata_network_reduction.biophysics import get_seclist_nsegs, get_mechs_params
+from sonata_network_reduction.biophysics import Biophysics
 from sonata_network_reduction.morphology import copy_soma, ReducedNeuronMorphology
 from sonata_network_reduction.write_reduced import write_reduced_to_circuit
 
@@ -35,56 +29,6 @@ def _current_NRN_soma():
     cells = list(cells)
     assert len(cells) == 1
     return cells[0]
-
-
-def _to_bluepyopt_format(
-        mech_names: Dict[str, List],
-        uniform_params: Dict[str, Dict[str, float]]) \
-        -> Tuple[List[NrnMODMechanism], List[NrnSectionParameter]]:
-    mechs = []
-    params = []
-    for seclist_name in mech_names.keys():
-        loc = NrnSeclistLocation(seclist_name, seclist_name)
-        mechs += [NrnMODMechanism(mech_name, suffix=mech_name, locations=[loc])
-                  for mech_name in mech_names[seclist_name]]
-        params += [NrnSectionParameter(
-            param_name, param_value, True, param_name=param_name, locations=[loc])
-            for param_name, param_value in uniform_params[seclist_name].items()]
-    return mechs, params
-
-
-def _save_biophysics(biophys_filepath: Path, morphology: ReducedNeuronMorphology,
-                     morphology_name: str):
-    """Saves biophysics of morphology to a file
-
-    Args:
-        biophys_filepath: where to save file
-        morphology: to get biophysics from
-        morphology_name: name of morphology to store in biophysics file
-    """
-    biophys_filepath.parent.mkdir(exist_ok=True)
-    mech_names, uniform_params, nonuniform_params = get_mechs_params(morphology.section_lists)
-    mechs, uniform_params = _to_bluepyopt_format(mech_names, uniform_params)
-    nonuniform_param_names = set(itertools.chain(*nonuniform_params.values()))
-    template_filepath = pkg_resources.resource_filename(
-        __name__, 'templates/reduced_cell_template.jinja2')
-    biophysics = create_hoc.create_hoc(
-        mechs=mechs,
-        parameters=uniform_params,
-        morphology=morphology_name,
-        replace_axon='',
-        template_name=utils.to_valid_nrn_name(biophys_filepath.stem),
-        template_filename=template_filepath,
-        template_dir='',
-        custom_jinja_params={
-            'nsegs_map': get_seclist_nsegs(morphology.section_lists),
-            'nonuniform_params': nonuniform_params,
-            'nonuniform_param_names': nonuniform_param_names,
-        },
-    )
-
-    with biophys_filepath.open('w') as f:
-        f.write(biophysics)
 
 
 def _save_node(node_path: Path, node: pd.Series, node_id: int):
@@ -203,11 +147,12 @@ def _reduce_node_same_process(
         reduced_dir = Path(tmp_dir.name)
     else:
         reduced_dir.mkdir(parents=True, exist_ok=True)
-    reduced_morphology_filepath = reduced_dir.joinpath(
+    reduced_morphology_file = reduced_dir.joinpath(
         'morphology', _get_morphology_filepath(node, circuit).name)
-    biophys_filepath = reduced_dir / 'biophys' / _get_biophys_filepath(node, circuit).name
-    morphology.save(reduced_morphology_filepath)
-    _save_biophysics(biophys_filepath, morphology, reduced_morphology_filepath.name)
+    biophys_file = reduced_dir / 'biophys' / _get_biophys_filepath(node, circuit).name
+    morphology.save(reduced_morphology_file)
+    biophysics = Biophysics.from_nrn(morphology.section_lists)
+    biophysics.save(biophys_file, reduced_morphology_file.name)
     _save_node(reduced_dir / 'node', node, node_id)
     save_edges(reduced_dir / 'edges', edges)
     if inplace:

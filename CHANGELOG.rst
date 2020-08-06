@@ -8,6 +8,7 @@ Version 0.0.10
     of projections edges which don't have 'efferent' attributes.
 
 - Fixed BGLibPy==4.3.3 dependency update
+- Added Biophysics class for representation of biophysical templates
 
 Version 0.0.9
 -------------
