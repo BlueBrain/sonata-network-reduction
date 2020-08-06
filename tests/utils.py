@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 from contextlib import contextmanager
+from distutils.dir_util import copy_tree
 from pathlib import Path
 
 from bluepysnap import Circuit
@@ -14,10 +15,17 @@ logging.basicConfig(level=os.environ.get('LOGLEVEL'))
 TEST_DATA_DIR = Path(__file__).resolve().parent / 'data'
 
 
-def circuit_9cells():
-    circuit_path = TEST_DATA_DIR / '9cells'
-    circuit_config_path = circuit_path / 'circuit_config.json'
-    return circuit_path, circuit_config_path, Circuit(str(circuit_config_path))
+@contextmanager
+def copy_circuit(circuit_config_file):
+    """Copies test/data circuit to a temp directory.
+
+    Returns:
+        yields a path to the copied circuit dir and circuit config file
+    """
+    with tempfile.TemporaryDirectory() as copied_circuit_dir:
+        copy_tree(str(circuit_config_file.parent), copied_circuit_dir)
+        copied_circuit_dir = Path(copied_circuit_dir)
+        yield copied_circuit_dir, copied_circuit_dir / circuit_config_file.name
 
 
 @contextmanager
