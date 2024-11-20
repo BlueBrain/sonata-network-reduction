@@ -68,7 +68,7 @@ In a Python virtualenv:
 
 .. code:: bash
 
-    pip install --index-url https://bbpteam.epfl.ch/repository/devpi/bbprelman/dev/+simple/ sonata-network-reduction
+    pip install sonata-network-reduction
 
 NEURON
 ^^^^^^
@@ -170,3 +170,13 @@ Notes
 - In case you want to run reduced network manually. Do not forget to apply
   ``run_params['dL']/['spike_treshold']`` to instantiated neurons in order to obtain the same
   results from running.
+
+
+Acknowledgements
+================
+
+The development of this software was supported by funding to the Blue Brain Project, a research center of the École polytechnique fédérale de Lausanne (EPFL), from the Swiss government’s ETH Board of the Swiss Federal Institutes of Technology.
+
+For license see LICENSE.txt.
+
+Copyright © 2019-2024 Blue Brain Project/EPFL

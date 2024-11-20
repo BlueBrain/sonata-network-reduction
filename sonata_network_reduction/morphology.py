@@ -5,10 +5,18 @@ from pathlib import Path
 from typing import Tuple, List, Iterable
 import numpy as np
 
-from aibs_circuit_converter.convert_to_hoc import LOCATION_MAP
 from morphio.mut import Morphology
 from morphio import SectionType, PointLevel
 from neuron import h
+
+
+LOCATION_MAP = {
+    'apic': 'apical',
+    'soma': 'somatic',
+    'dend': 'basal',
+    'axon': 'axonal',
+    'all': 'all'
+}
 
 
 def _extract_sec_name_parts(sec_name: str) -> Tuple[str, int]:
